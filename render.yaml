@@ -43,12 +43,11 @@ services:
       - key: UPLOADS_DIR
         value: /tmp/uploads               # ephemeral on free tier (lost on redeploy). Upgrade to Starter for persistent disk.
 
-  # ===== Frontend (Static Site) =====
+  # ===== Frontend (Static Site — always free, no plan field needed) =====
   - type: web
     name: careerai-frontend
     runtime: static
     rootDir: frontend
-    plan: free
     buildCommand: npm install && npm run build
     staticPublishPath: build
     envVars:
