@@ -44,10 +44,17 @@ def startup():
     init_db()
     _seed_data()
 
-    # Auto-generate worldwide jobs
-    from app.services.job_generator import seed_initial_jobs, start_background_generator
-    seed_initial_jobs(min_count=500)
-    start_background_generator(interval_seconds=3600)  # New jobs every hour
+    # Auto-generate jobs in a background thread so startup doesn't block
+    # (Render times out if startup takes >60s)
+    import threading
+    def _async_seed():
+        try:
+            from app.services.job_generator import seed_initial_jobs, start_background_generator
+            seed_initial_jobs(min_count=100)  # Start with 100 jobs (faster)
+            start_background_generator(interval_seconds=3600)
+        except Exception as e:
+            print(f"[startup] Job seeder error: {e}")
+    threading.Thread(target=_async_seed, daemon=True).start()
 
 
 def _seed_data():
