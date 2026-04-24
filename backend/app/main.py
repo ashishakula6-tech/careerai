@@ -11,17 +11,20 @@ app = FastAPI(
     description="AI-powered HR Recruitment Platform with human-in-the-loop controls",
 )
 
-# CORS — read allowed origins from env, fall back to wildcard for local dev
+# CORS — read allowed origins from env, fall back to wildcard for local dev.
+# Also allow any *.onrender.com subdomain via regex so the deployed frontend
+# works even if its URL suffix changes between deploys.
 import os
 _cors_env = os.getenv("CORS_ORIGINS", "")
 if _cors_env:
-    _origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+    _origins = [o.strip().rstrip("/") for o in _cors_env.split(",") if o.strip()]
 else:
     _origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=False if "*" in _origins else True,
     allow_methods=["*"],
     allow_headers=["*"],
