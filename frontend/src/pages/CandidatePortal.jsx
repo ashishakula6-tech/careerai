@@ -1,15 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import AIInterview from '../components/AIInterview';
 import VideoRecorder from '../components/VideoRecorder';
 
 export default function CandidatePortal() {
-  // view: landing | upload | matches | job-detail | record-video | apply-success | status | data | interview | inbox
+  // view: landing | upload | matches | job-detail | record-video | apply-success | status | data | interview | inbox | search-results
   const [view, setView] = useState('landing');
   const [email, setEmail] = useState('');
   const [pendingAppId, setPendingAppId] = useState(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Candidate auth
+  const [candidateAuth, setCandidateAuth] = useState(null); // { name, email, token }
+  const [authView, setAuthView] = useState(null); // null | 'login' | 'register'
+  const [authForm, setAuthForm] = useState({ email: '', password: '', first_name: '', last_name: '', phone: '' });
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Landing search
+  const [landingQuery, setLandingQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  // Recent jobs on landing
+  const [recentJobs, setRecentJobs] = useState([]);
 
   // Resume + profile
   const [resume, setResume] = useState(null);
@@ -49,16 +64,98 @@ export default function CandidatePortal() {
   // Interview
   const [interviewData, setInterviewData] = useState(null);
 
+  // ==================== SESSION RESTORE + RECENT JOBS ====================
+  useEffect(() => {
+    // Restore candidate session from localStorage
+    try {
+      const stored = localStorage.getItem('candidate_auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setCandidateAuth(parsed);
+        setEmail(parsed.email || '');
+      }
+    } catch {}
+
+    // Load recent jobs for landing page
+    api.get('/portal/jobs', { params: { limit: 8 }, headers: { Authorization: undefined } })
+      .then(res => setRecentJobs(res.data.jobs || []))
+      .catch(() => {});
+  }, []);
+
+  // ==================== CANDIDATE AUTH ====================
+  const handleCandidateLogin = async (e) => {
+    e.preventDefault();
+    setAuthError(''); setAuthLoading(true);
+    try {
+      const res = await api.post('/portal/candidate/login', null, {
+        params: { email: authForm.email, password: authForm.password },
+        headers: { Authorization: undefined },
+      });
+      const auth = { ...res.data.candidate, token: res.data.access_token };
+      setCandidateAuth(auth);
+      setEmail(auth.email);
+      localStorage.setItem('candidate_auth', JSON.stringify(auth));
+      setAuthView(null);
+      setAuthForm({ email: '', password: '', first_name: '', last_name: '', phone: '' });
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Login failed. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleCandidateRegister = async (e) => {
+    e.preventDefault();
+    if (!authForm.phone.trim()) { setAuthError('Phone number is required'); return; }
+    setAuthError(''); setAuthLoading(true);
+    try {
+      const res = await api.post('/portal/candidate/register', null, {
+        params: {
+          email: authForm.email, password: authForm.password,
+          first_name: authForm.first_name, last_name: authForm.last_name, phone: authForm.phone,
+        },
+        headers: { Authorization: undefined },
+      });
+      const auth = { ...res.data.candidate, token: res.data.access_token };
+      setCandidateAuth(auth);
+      setEmail(auth.email);
+      localStorage.setItem('candidate_auth', JSON.stringify(auth));
+      setAuthView(null);
+      setAuthForm({ email: '', password: '', first_name: '', last_name: '', phone: '' });
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || 'Registration failed. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // ==================== LANDING SEARCH ====================
+  const handleLandingSearch = async (e) => {
+    e.preventDefault();
+    if (!landingQuery.trim()) return;
+    setSearchLoading(true);
+    try {
+      const res = await api.get('/portal/jobs', {
+        params: { q: landingQuery.trim(), limit: 20 },
+        headers: { Authorization: undefined },
+      });
+      setSearchResults(res.data.jobs || []);
+      setView('search-results');
+    } catch {}
+    finally { setSearchLoading(false); }
+  };
+
   // ==================== UPLOAD & MATCH ====================
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!form.consent) { setMessage('Please consent to data processing'); return; }
+    if (!form.phone.trim()) { setMessage('Phone number is required'); return; }
     if (manualSkills.length === 0) { setMessage('Please add at least one skill'); return; }
     setLoading(true); setMessage('');
     try {
       const res = await api.post('/portal/manual-profile', {
         email, first_name: form.first_name, last_name: form.last_name,
-        phone: form.phone || null,
+        phone: form.phone,
         job_title: manualForm.job_title,
         skills: manualSkills,
         experience_years: manualForm.is_fresher ? 0 : (parseInt(manualForm.experience_years) || 0),
@@ -200,6 +297,9 @@ export default function CandidatePortal() {
   // ==================== LOGOUT ====================
   const handleLogout = () => {
     if (!window.confirm('Sign out of your candidate session? Your saved profile data on the server stays — sign back in with your email anytime.')) return;
+    localStorage.removeItem('candidate_auth');
+    setCandidateAuth(null);
+    setAuthView(null);
     setEmail('');
     setProfile(null);
     setResume(null);
@@ -273,9 +373,24 @@ export default function CandidatePortal() {
           <div className="flex items-center gap-3">
             <button onClick={() => setView('status')} className="px-4 py-2 text-sm text-white/70 hover:text-white transition">My Applications</button>
             <a href="/login" className="px-4 py-2 text-sm text-white/70 hover:text-white transition">Recruiter Login</a>
-            <button onClick={() => setView('upload')} className="px-5 py-2.5 bg-white text-indigo-700 rounded-xl font-bold text-sm hover:bg-indigo-50 transition shadow-lg">
-              Get Started Free
-            </button>
+            {candidateAuth ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full border border-white/20">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
+                    {candidateAuth.name?.charAt(0)}
+                  </div>
+                  <span className="text-white text-sm font-medium">{candidateAuth.name}</span>
+                </div>
+                <button onClick={handleLogout} className="px-3 py-1.5 text-sm text-white/60 hover:text-white border border-white/20 rounded-lg transition">Sign out</button>
+              </div>
+            ) : (
+              <>
+                <button onClick={() => { setAuthView('login'); setAuthError(''); }} className="px-4 py-2 text-sm text-white/80 hover:text-white border border-white/20 rounded-xl transition">Sign In</button>
+                <button onClick={() => setView('upload')} className="px-5 py-2.5 bg-white text-indigo-700 rounded-xl font-bold text-sm hover:bg-indigo-50 transition shadow-lg">
+                  Get Started Free
+                </button>
+              </>
+            )}
           </div>
         </nav>
 
@@ -302,7 +417,23 @@ export default function CandidatePortal() {
                 Video pitch, AI interview, and you're hired — all in one place.
               </p>
 
-              <div className="flex items-center gap-4 mt-8">
+              {/* Search bar */}
+              <form onSubmit={handleLandingSearch} className="mt-8 flex gap-2">
+                <div className="flex-1 relative">
+                  <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <input
+                    type="text" value={landingQuery} onChange={e => setLandingQuery(e.target.value)}
+                    placeholder="Search jobs — e.g. Python developer, Dubai, Remote…"
+                    className="w-full pl-12 pr-4 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-white/40 focus:outline-none focus:border-white/50 focus:bg-white/15 transition text-sm backdrop-blur"
+                  />
+                </div>
+                <button type="submit" disabled={searchLoading}
+                  className="px-6 py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-2xl font-bold shadow-xl hover:scale-105 transition-all disabled:opacity-60 whitespace-nowrap">
+                  {searchLoading ? 'Searching…' : 'Search Jobs'}
+                </button>
+              </form>
+
+              <div className="flex items-center gap-4 mt-4">
                 <button onClick={() => setView('upload')}
                   className="px-8 py-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white rounded-2xl font-bold text-lg shadow-2xl hover:shadow-purple-500/30 hover:scale-105 transition-all flex items-center gap-2">
                   Upload Resume & Find Jobs
@@ -314,14 +445,14 @@ export default function CandidatePortal() {
               </div>
 
               {/* Trust badges */}
-              <div className="flex items-center gap-6 mt-10 text-white/50 text-sm">
+              <div className="flex items-center gap-6 mt-6 text-white/50 text-sm">
                 <div className="flex items-center gap-1.5">
                   <svg className="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
                   100% Free
                 </div>
                 <div className="flex items-center gap-1.5">
                   <svg className="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                  No Sign-up Required
+                  Secure Login
                 </div>
                 <div className="flex items-center gap-1.5">
                   <svg className="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
@@ -384,6 +515,50 @@ export default function CandidatePortal() {
             </div>
           </div>
         </div>
+
+        {/* Recent Jobs */}
+        {recentJobs.length > 0 && (
+          <div className="relative z-10 max-w-7xl mx-auto px-6 pb-16">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-black text-white">Recently Added Jobs</h2>
+              <button onClick={() => { setLandingQuery(''); handleLandingSearch({ preventDefault: () => {} }); }}
+                className="text-sm text-white/60 hover:text-white transition flex items-center gap-1">
+                View all <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {recentJobs.slice(0, 8).map(job => (
+                <div key={job.id}
+                  className="glass rounded-2xl p-5 border border-white/10 card-hover cursor-pointer"
+                  onClick={() => { setSelectedJob(job); setView('job-detail'); }}>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <h3 className="text-white font-bold text-sm leading-tight line-clamp-2">{job.title}</h3>
+                    <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                      job.work_mode === 'remote' ? 'bg-emerald-500/20 text-emerald-300' :
+                      job.work_mode === 'hybrid' ? 'bg-amber-500/20 text-amber-300' :
+                      'bg-blue-500/20 text-blue-300'}`}>
+                      {job.work_mode || 'Office'}
+                    </span>
+                  </div>
+                  <p className="text-white/50 text-xs mb-3 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    {job.location}
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {(job.skills || []).slice(0, 3).map(s => (
+                      <span key={s} className="text-xs px-2 py-0.5 bg-white/10 text-white/60 rounded">{s}</span>
+                    ))}
+                    {(job.skills || []).length > 3 && <span className="text-xs text-white/40">+{job.skills.length - 3}</span>}
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); setView('upload'); }}
+                    className="mt-3 w-full py-1.5 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white rounded-lg text-xs font-medium transition">
+                    Apply Now
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* How it works */}
         <div className="relative z-10 max-w-7xl mx-auto px-6 pb-20">
@@ -452,6 +627,156 @@ export default function CandidatePortal() {
             </div>
           </div>
         </footer>
+
+        {/* Auth Modal */}
+        {authView && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setAuthView(null)}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 animate-fade-in" onClick={e => e.stopPropagation()}>
+              {/* Tabs */}
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-6">
+                <button onClick={() => { setAuthView('login'); setAuthError(''); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${authView === 'login' ? 'bg-white shadow text-indigo-700' : 'text-gray-500'}`}>
+                  Sign In
+                </button>
+                <button onClick={() => { setAuthView('register'); setAuthError(''); }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition ${authView === 'register' ? 'bg-white shadow text-indigo-700' : 'text-gray-500'}`}>
+                  Register
+                </button>
+              </div>
+
+              {authView === 'login' ? (
+                <form onSubmit={handleCandidateLogin} className="space-y-4">
+                  <h2 className="text-xl font-black text-gray-900">Welcome back</h2>
+                  {authError && <p className="text-sm text-rose-600 bg-rose-50 px-3 py-2 rounded-lg">{authError}</p>}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Email *</label>
+                    <input type="email" required value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Password *</label>
+                    <input type="password" required value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                  </div>
+                  <button type="submit" disabled={authLoading}
+                    className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition disabled:opacity-60">
+                    {authLoading ? 'Signing in…' : 'Sign In'}
+                  </button>
+                  <p className="text-center text-sm text-gray-500">No account? <button type="button" onClick={() => { setAuthView('register'); setAuthError(''); }} className="text-indigo-600 font-semibold">Register</button></p>
+                </form>
+              ) : (
+                <form onSubmit={handleCandidateRegister} className="space-y-4">
+                  <h2 className="text-xl font-black text-gray-900">Create your account</h2>
+                  {authError && <p className="text-sm text-rose-600 bg-rose-50 px-3 py-2 rounded-lg">{authError}</p>}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">First Name *</label>
+                      <input type="text" required value={authForm.first_name} onChange={e => setAuthForm({...authForm, first_name: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-1">Last Name *</label>
+                      <input type="text" required value={authForm.last_name} onChange={e => setAuthForm({...authForm, last_name: e.target.value})}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Email *</label>
+                    <input type="email" required value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Phone *</label>
+                    <input type="tel" required value={authForm.phone} onChange={e => setAuthForm({...authForm, phone: e.target.value})}
+                      placeholder="+1 234 567 8900"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Password *</label>
+                    <input type="password" required minLength={6} value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})}
+                      placeholder="Minimum 6 characters"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                  </div>
+                  <button type="submit" disabled={authLoading}
+                    className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition disabled:opacity-60">
+                    {authLoading ? 'Creating account…' : 'Create Account'}
+                  </button>
+                  <p className="text-center text-sm text-gray-500">Already registered? <button type="button" onClick={() => { setAuthView('login'); setAuthError(''); }} className="text-indigo-600 font-semibold">Sign In</button></p>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ===== SEARCH RESULTS VIEW =====
+  if (view === 'search-results') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div className="max-w-5xl mx-auto px-4 py-10">
+          <button onClick={() => setView('landing')} className="text-sm text-blue-600 hover:underline mb-6 inline-flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            Back to home
+          </button>
+          <div className="mb-6">
+            <form onSubmit={handleLandingSearch} className="flex gap-2">
+              <div className="flex-1 relative">
+                <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input type="text" value={landingQuery} onChange={e => setLandingQuery(e.target.value)}
+                  placeholder="Search jobs…"
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white" />
+              </div>
+              <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">Search</button>
+            </form>
+            <p className="text-sm text-gray-500 mt-2">{searchResults.length} jobs found for "{landingQuery}"</p>
+          </div>
+          <div className="space-y-4">
+            {searchResults.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <svg className="w-12 h-12 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <p>No jobs found. Try a different keyword.</p>
+              </div>
+            ) : searchResults.map(job => (
+              <div key={job.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer"
+                onClick={() => { setSelectedJob(job); setView('job-detail'); }}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
+                    <p className="text-gray-500 text-sm mt-1 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
+                      {job.location}
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                        job.work_mode === 'remote' ? 'bg-emerald-100 text-emerald-700' :
+                        job.work_mode === 'hybrid' ? 'bg-amber-100 text-amber-700' :
+                        'bg-blue-100 text-blue-700'}`}>
+                        {job.work_mode || 'Office'}
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {(job.skills || []).slice(0, 5).map(s => (
+                        <span key={s} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{s}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); setView('upload'); }}
+                    className="shrink-0 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition">
+                    Apply
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {searchResults.length > 0 && (
+            <div className="mt-8 text-center">
+              <p className="text-gray-500 text-sm mb-3">Want personalised matches? Upload your resume.</p>
+              <button onClick={() => setView('upload')} className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 transition">
+                Upload Resume & Get Matched
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -576,8 +901,9 @@ export default function CandidatePortal() {
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Phone <span className="text-gray-400 font-normal">(optional)</span></label>
-                <input type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Phone *</label>
+                <input type="tel" required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                  placeholder="+1 234 567 8900"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
               </div>
               {/* Toggle: Resume or Manual */}

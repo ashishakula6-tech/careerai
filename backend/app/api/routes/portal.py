@@ -21,6 +21,81 @@ def _get_default_tenant(db):
     return t.id if t else None
 
 
+# ==================== CANDIDATE AUTH ====================
+
+@router.post("/candidate/register")
+def candidate_register(
+    email: str,
+    password: str,
+    first_name: str,
+    last_name: str,
+    phone: str,
+    db: Session = Depends(get_db),
+):
+    from app.core.security import get_password_hash, create_access_token
+    if not phone.strip():
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    tid = _get_default_tenant(db)
+    if not tid:
+        raise HTTPException(status_code=500, detail="No tenant configured")
+
+    existing = db.query(Candidate).filter(
+        Candidate.email == email, Candidate.tenant_id == tid, Candidate.deleted_at.is_(None)
+    ).first()
+
+    if existing:
+        if existing.password_hash:
+            raise HTTPException(status_code=400, detail="Email already registered. Please sign in instead.")
+        # Attach password to existing unregistered candidate
+        existing.password_hash = get_password_hash(password)
+        existing.phone = phone
+        db.commit()
+        token_data = {"sub": existing.id, "email": existing.email, "role": "candidate",
+                      "name": f"{existing.first_name} {existing.last_name}"}
+        return {"access_token": create_access_token(token_data), "token_type": "bearer",
+                "candidate": {"id": existing.id, "email": existing.email,
+                              "name": f"{existing.first_name} {existing.last_name}"}}
+
+    candidate = Candidate(
+        tenant_id=tid, email=email, first_name=first_name, last_name=last_name,
+        phone=phone, phone_hash=hashlib.sha256(phone.encode()).hexdigest(),
+        password_hash=get_password_hash(password), consent_given=True, source="portal",
+    )
+    db.add(candidate)
+    db.flush()
+    db.add(Consent(candidate_id=candidate.id, tenant_id=tid, purpose="job_application",
+                   granted=True, granted_at=datetime.now(timezone.utc)))
+    db.commit()
+
+    token_data = {"sub": candidate.id, "email": email, "role": "candidate",
+                  "name": f"{first_name} {last_name}"}
+    return {"access_token": create_access_token(token_data), "token_type": "bearer",
+            "candidate": {"id": candidate.id, "email": email, "name": f"{first_name} {last_name}"}}
+
+
+@router.post("/candidate/login")
+def candidate_login(email: str, password: str, db: Session = Depends(get_db)):
+    from app.core.security import verify_password, create_access_token
+    tid = _get_default_tenant(db)
+
+    candidate = db.query(Candidate).filter(
+        Candidate.email == email, Candidate.tenant_id == tid, Candidate.deleted_at.is_(None)
+    ).first()
+
+    if not candidate:
+        raise HTTPException(status_code=401, detail="Email not found. Please register first.")
+    if not candidate.password_hash:
+        raise HTTPException(status_code=401, detail="No password set. Please register with a password first.")
+    if not verify_password(password, candidate.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect password.")
+
+    token_data = {"sub": candidate.id, "email": candidate.email, "role": "candidate",
+                  "name": f"{candidate.first_name} {candidate.last_name}"}
+    return {"access_token": create_access_token(token_data), "token_type": "bearer",
+            "candidate": {"id": candidate.id, "email": email,
+                          "name": f"{candidate.first_name} {candidate.last_name}"}}
+
+
 @router.get("/jobs")
 def list_public_jobs(
     q: Optional[str] = Query(None, description="Search query - matches title, description, skills, location"),
@@ -118,8 +193,11 @@ async def manual_profile_and_match(
     email = data.get("email", "").strip()
     first_name = data.get("first_name", "").strip()
     last_name = data.get("last_name", "").strip()
+    phone = data.get("phone", "").strip()
     if not email or not first_name:
         raise HTTPException(status_code=400, detail="Email and first name are required")
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number is required")
 
     candidate_skills = data.get("skills", [])
     experience_years = data.get("experience_years", 0)
@@ -177,10 +255,9 @@ async def manual_profile_and_match(
     ).first()
 
     if not candidate:
-        phone = data.get("phone")
         candidate = Candidate(
             tenant_id=tid, email=email, first_name=first_name, last_name=last_name,
-            phone_hash=hashlib.sha256(phone.encode()).hexdigest() if phone else None,
+            phone=phone, phone_hash=hashlib.sha256(phone.encode()).hexdigest(),
             consent_given=True, source="portal-manual",
         )
         db.add(candidate)
@@ -292,7 +369,7 @@ async def upload_resume_and_match(
     email: str = Form(...),
     first_name: str = Form(...),
     last_name: str = Form(...),
-    phone: Optional[str] = Form(None),
+    phone: str = Form(...),
     consent_job_application: bool = Form(True),
     resume: UploadFile = File(...),
     db: Session = Depends(get_db),

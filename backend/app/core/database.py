@@ -58,7 +58,7 @@ def init_db():
         try:
             Base.metadata.create_all(bind=engine)
             print(f"[init_db] Connected and created tables on attempt {attempt + 1}")
-            return
+            break
         except OperationalError as e:
             if attempt < max_retries - 1:
                 wait = min(2 ** attempt, 30)
@@ -67,3 +67,24 @@ def init_db():
             else:
                 print(f"[init_db] Failed after {max_retries} attempts: {e}")
                 raise
+
+    # Add new columns to existing tables (safe, idempotent)
+    from sqlalchemy import text
+    try:
+        with engine.connect() as conn:
+            if is_sqlite:
+                for col_sql in [
+                    "ALTER TABLE candidates ADD COLUMN phone VARCHAR(50)",
+                    "ALTER TABLE candidates ADD COLUMN password_hash VARCHAR(255)",
+                ]:
+                    try:
+                        conn.execute(text(col_sql))
+                        conn.commit()
+                    except Exception:
+                        pass  # column already exists
+            else:
+                conn.execute(text("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS phone VARCHAR(50)"))
+                conn.execute(text("ALTER TABLE candidates ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255)"))
+                conn.commit()
+    except Exception as e:
+        print(f"[init_db] Column migration note: {e}")
