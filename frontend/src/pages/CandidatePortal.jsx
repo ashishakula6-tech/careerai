@@ -28,7 +28,7 @@ export default function CandidatePortal() {
 
   // Resume + profile
   const [resume, setResume] = useState(null);
-  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', consent: false });
+  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', password: '', consent: false });
   const [useManual, setUseManual] = useState(false);
   const [manualForm, setManualForm] = useState({
     job_title: '', experience_years: '', experience_details: '',
@@ -145,14 +145,50 @@ export default function CandidatePortal() {
     finally { setSearchLoading(false); }
   };
 
+  // ==================== REGISTER OR LOGIN HELPER ====================
+  // Silently registers a new candidate or logs in an existing one using
+  // the details from the upload form, then stores the session.
+  const registerOrLogin = async () => {
+    if (candidateAuth) return; // already logged in
+    try {
+      const res = await api.post('/portal/candidate/register', null, {
+        params: { email, password: form.password, first_name: form.first_name, last_name: form.last_name, phone: form.phone },
+        headers: { Authorization: undefined },
+      });
+      const auth = { ...res.data.candidate, token: res.data.access_token };
+      setCandidateAuth(auth);
+      localStorage.setItem('candidate_auth', JSON.stringify(auth));
+    } catch (err) {
+      const detail = err.response?.data?.detail || '';
+      if (detail.includes('already registered')) {
+        // Existing account — try login with the password they typed
+        try {
+          const res = await api.post('/portal/candidate/login', null, {
+            params: { email, password: form.password },
+            headers: { Authorization: undefined },
+          });
+          const auth = { ...res.data.candidate, token: res.data.access_token };
+          setCandidateAuth(auth);
+          localStorage.setItem('candidate_auth', JSON.stringify(auth));
+        } catch (loginErr) {
+          throw new Error(loginErr.response?.data?.detail || 'Wrong password for this email. Please enter your correct password.');
+        }
+      } else {
+        throw new Error(detail || 'Account creation failed.');
+      }
+    }
+  };
+
   // ==================== UPLOAD & MATCH ====================
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!form.consent) { setMessage('Please consent to data processing'); return; }
     if (!form.phone.trim()) { setMessage('Phone number is required'); return; }
+    if (!candidateAuth && !form.password.trim()) { setMessage('Please set a password for your account'); return; }
     if (manualSkills.length === 0) { setMessage('Please add at least one skill'); return; }
     setLoading(true); setMessage('');
     try {
+      await registerOrLogin();
       const res = await api.post('/portal/manual-profile', {
         email, first_name: form.first_name, last_name: form.last_name,
         phone: form.phone,
@@ -184,13 +220,16 @@ export default function CandidatePortal() {
     if (!useManual && !resume) { setMessage('Please upload your resume or fill in manually'); return; }
     if (useManual) { handleManualSubmit(e); return; }
     if (!form.consent) { setMessage('Please consent to data processing'); return; }
+    if (!form.phone.trim()) { setMessage('Phone number is required'); return; }
+    if (!candidateAuth && !form.password.trim()) { setMessage('Please set a password for your account'); return; }
     setLoading(true); setMessage('');
     try {
+      await registerOrLogin();
       const fd = new FormData();
       fd.append('email', email);
       fd.append('first_name', form.first_name);
       fd.append('last_name', form.last_name);
-      if (form.phone) fd.append('phone', form.phone);
+      fd.append('phone', form.phone);
       fd.append('consent_job_application', 'true');
       fd.append('resume', resume);
       const res = await api.post('/portal/upload-resume', fd, {
@@ -550,7 +589,7 @@ export default function CandidatePortal() {
                     ))}
                     {(job.skills || []).length > 3 && <span className="text-xs text-white/40">+{job.skills.length - 3}</span>}
                   </div>
-                  <button onClick={e => { e.stopPropagation(); setView('upload'); }}
+                  <button onClick={e => { e.stopPropagation(); setSelectedJob(job); setView('upload'); }}
                     className="mt-3 w-full py-1.5 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white rounded-lg text-xs font-medium transition">
                     Apply Now
                   </button>
@@ -760,7 +799,7 @@ export default function CandidatePortal() {
                       ))}
                     </div>
                   </div>
-                  <button onClick={e => { e.stopPropagation(); setView('upload'); }}
+                  <button onClick={e => { e.stopPropagation(); setSelectedJob(job); setView('upload'); }}
                     className="shrink-0 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition">
                     Apply
                   </button>
@@ -882,7 +921,24 @@ export default function CandidatePortal() {
               </div>
             </div>
 
+            {selectedJob && (
+              <div className="mb-4 p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center gap-3">
+                <svg className="w-5 h-5 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-indigo-800">Applying for: {selectedJob.title}</p>
+                  <p className="text-xs text-indigo-600">{selectedJob.location} · {selectedJob.work_mode || 'Office'}</p>
+                </div>
+                <button type="button" onClick={() => setSelectedJob(null)} className="text-indigo-400 hover:text-indigo-600 text-lg leading-none">&times;</button>
+              </div>
+            )}
+
             <form onSubmit={handleUpload} className="glass-card rounded-3xl p-8 space-y-5 shadow-2xl">
+              {candidateAuth && (
+                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
+                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  Signed in as <strong>{candidateAuth.name}</strong> — no password needed
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">First Name *</label>
@@ -906,6 +962,17 @@ export default function CandidatePortal() {
                   placeholder="+1 234 567 8900"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
               </div>
+              {!candidateAuth && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  {candidateAuth ? 'Account Password' : 'Set Password *'}
+                  <span className="text-gray-400 font-normal ml-1 text-xs">— to save your profile & sign in later</span>
+                </label>
+                <input type="password" required minLength={6} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                  placeholder="Min 6 characters"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
+              </div>
+              )}
               {/* Toggle: Resume or Manual */}
               <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
                 <button type="button" onClick={() => setUseManual(false)}
