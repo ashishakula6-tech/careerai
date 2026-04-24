@@ -41,11 +41,7 @@ services:
       - key: APP_BASE_URL
         sync: false                       # set to frontend URL after deploy
       - key: UPLOADS_DIR
-        value: /var/data/uploads
-    disk:
-      name: video-uploads
-      mountPath: /var/data/uploads
-      sizeGB: 1
+        value: /tmp/uploads               # ephemeral on free tier (lost on redeploy). Upgrade to Starter for persistent disk.
 
   # ===== Frontend (Static Site) =====
   - type: web
