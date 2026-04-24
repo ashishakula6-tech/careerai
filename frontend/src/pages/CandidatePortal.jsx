@@ -197,6 +197,33 @@ export default function CandidatePortal() {
     } catch {}
   };
 
+  // ==================== LOGOUT ====================
+  const handleLogout = () => {
+    if (!window.confirm('Sign out of your candidate session? Your saved profile data on the server stays — sign back in with your email anytime.')) return;
+    setEmail('');
+    setProfile(null);
+    setResume(null);
+    setForm({ first_name: '', last_name: '', phone: '', consent: false });
+    setUseManual(false);
+    setManualForm({ job_title: '', experience_years: '', experience_details: '', location: '', summary: '', is_fresher: false });
+    setManualSkills([]);
+    setSkillInput('');
+    setEducationList([{ degree: '', field: '', university: '', year: '' }]);
+    setMatchedJobs([]);
+    setTotalJobs(0);
+    setTotalMatched(0);
+    setApplications([]);
+    setInboxEmails([]);
+    setSelectedEmail(null);
+    setSelectedJob(null);
+    setApplyResult(null);
+    setInterviewData(null);
+    setPendingAppId(null);
+    setMessage('');
+    clearAllFilters();
+    setView('landing');
+  };
+
   // ==================== FILTER MATCHED JOBS ====================
   const uniqueLocations = [...new Set(matchedJobs.map(j => j.location).filter(Boolean))].sort();
 
@@ -466,6 +493,13 @@ export default function CandidatePortal() {
             <button onClick={() => setView('status')} className="px-3 py-1.5 text-sm text-gray-600 hover:text-blue-600 font-medium rounded-lg hover:bg-white/50 transition">My Apps</button>
             <button onClick={() => setView('data')} className="px-3 py-1.5 text-sm text-gray-600 hover:text-blue-600 font-medium rounded-lg hover:bg-white/50 transition">Privacy</button>
             <a href="/login" className="px-3 py-1.5 text-sm text-gray-500 hover:text-blue-600 font-medium">Recruiter</a>
+            {(profile || email) && (
+              <button onClick={handleLogout} title="Sign out of your candidate session"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-rose-600 hover:text-white hover:bg-rose-500 font-medium rounded-lg border border-rose-200 hover:border-rose-500 transition">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                Sign out
+              </button>
+            )}
           </div>
         </div>
       </header>
