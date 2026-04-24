@@ -48,5 +48,22 @@ def get_db():
 
 
 def init_db():
-    """Create all tables."""
-    Base.metadata.create_all(bind=engine)
+    """Create all tables. Retries on connection failure — Render's PostgreSQL
+    can take 30–60s to accept connections after first provisioning."""
+    import time
+    from sqlalchemy.exc import OperationalError
+
+    max_retries = 12
+    for attempt in range(max_retries):
+        try:
+            Base.metadata.create_all(bind=engine)
+            print(f"[init_db] Connected and created tables on attempt {attempt + 1}")
+            return
+        except OperationalError as e:
+            if attempt < max_retries - 1:
+                wait = min(2 ** attempt, 30)
+                print(f"[init_db] DB not ready (attempt {attempt + 1}/{max_retries}), retrying in {wait}s")
+                time.sleep(wait)
+            else:
+                print(f"[init_db] Failed after {max_retries} attempts: {e}")
+                raise
