@@ -520,12 +520,15 @@ export default function CandidatePortal() {
             <a href="/login" className="px-4 py-2 text-sm text-white/70 hover:text-white transition">Recruiter Login</a>
             {candidateAuth ? (
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/10 rounded-full border border-white/20">
+                <button
+                  onClick={() => matchedJobs.length > 0 ? setView('matches') : setView('upload')}
+                  title="Go to your portal"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full border border-white/20 hover:border-white/40 transition cursor-pointer">
                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
                     {candidateAuth.name?.charAt(0)}
                   </div>
                   <span className="text-white text-sm font-medium">{candidateAuth.name}</span>
-                </div>
+                </button>
                 <button onClick={handleLogout} className="px-3 py-1.5 text-sm text-white/60 hover:text-white border border-white/20 rounded-lg transition">Sign out</button>
               </div>
             ) : (
