@@ -563,15 +563,17 @@ async def upload_resume_and_match(
 
     # Enrich metadata with all fields extracted by the Intelligence Engine
     enriched_meta = {
-        "personal_info": parsed.get("personal_info", {}),
-        "projects": parsed.get("projects", []),
-        "certifications": parsed.get("certifications", []),
-        "awards": parsed.get("awards", []),
-        "publications": parsed.get("publications", []),
-        "languages": parsed.get("languages", []),
-        "additional_work": parsed.get("additional_work", []),
-        "interests": parsed.get("interests", []),
-        "skills_breakdown": parsed.get("skills_breakdown", {}),
+        "personal_info":        parsed.get("personal_info", {}),
+        "projects":             parsed.get("projects", []),
+        "certifications":       parsed.get("certifications", []),
+        "awards":               parsed.get("awards", []),
+        "publications":         parsed.get("publications", []),
+        "languages":            parsed.get("languages", []),
+        "additional_work":      parsed.get("additional_work", []),
+        "interests":            parsed.get("interests", []),
+        "skills_breakdown":     parsed.get("skills_breakdown", {}),
+        "text_quality":         parsed.get("text_quality", 1.0),
+        "validation_warnings":  parsed.get("validation_warnings", []),
     }
 
     profile = CandidateProfile(
@@ -592,8 +594,13 @@ async def upload_resume_and_match(
     db.add(AuditLog(
         tenant_id=tid, action="RESUME_UPLOADED_PORTAL", entity_type="candidate",
         entity_id=candidate.id,
-        details_json=json.dumps({"email": email, "skills_found": len(candidate_skills),
-                                 "parsing_method": parsed.get("parsing_method", "rule_based")}),
+        details_json=json.dumps({
+            "email": email,
+            "skills_found": len(candidate_skills),
+            "parsing_method": parsed.get("parsing_method", "rule_based"),
+            "text_quality": parsed.get("text_quality", 1.0),
+            "validation_warnings": parsed.get("validation_warnings", []),
+        }),
     ))
     db.commit()
     db.refresh(candidate)
