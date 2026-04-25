@@ -521,7 +521,13 @@ export default function CandidatePortal() {
             {candidateAuth ? (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => matchedJobs.length > 0 ? setView('matches') : setView('upload')}
+                  onClick={() => {
+                    if (profile) {
+                      setView('matches');
+                    } else {
+                      setView('upload');
+                    }
+                  }}
                   title="Go to your portal"
                   className="flex items-center gap-2 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full border border-white/20 hover:border-white/40 transition cursor-pointer">
                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
