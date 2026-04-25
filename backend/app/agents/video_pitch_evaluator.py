@@ -179,40 +179,34 @@ class VideoPitchEvaluator:
         self, transcript: str, job_title: str, job_skills: List[str],
         job_description: str, candidate_name: str
     ) -> dict:
-        """LLM-based evaluation."""
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        """LLM-based video pitch evaluation — Claude Opus 4.7 primary, GPT-4o fallback."""
+        from app.services.llm_client import call_llm_json, LLMTier
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""Evaluate this video pitch transcript for a {job_title} position.
+        result = await call_llm_json(
+            system=f"""You are an expert talent evaluator at a leading recruitment platform.
+Evaluate this video pitch transcript for a {job_title} position.
 Required skills: {', '.join(job_skills)}
 
-Score 1-5 on:
-- communication (clarity, structure, fluency) weight 25%
-- confidence (assertiveness, conviction, energy) weight 20%
-- technical_knowledge (relevant skills, tools, projects mentioned) weight 30%
-- relevance (connection to the specific job) weight 25%
+Score 1-5 on each dimension:
+- communication (clarity, structure, fluency, articulation) weight 25%
+- confidence (assertiveness, conviction, positive energy) weight 20%
+- technical_knowledge (relevant skills, tools, projects actually mentioned) weight 30%
+- relevance (how specifically connected to this role and company) weight 25%
 
 Return JSON:
-- overall_score, max_score: 5.0, pass_threshold: {self.PASS_THRESHOLD}
-- passed: boolean
-- scores: object with each criterion
-- matched_skills_mentioned: array
-- strengths: 2-3 items
-- improvements: 1-2 items
-- summary: 2 sentences""",
-                },
-                {"role": "user", "content": f"Candidate: {candidate_name}\n\nTranscript:\n{transcript[:3000]}"},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
+- overall_score: float (weighted average)
+- max_score: 5.0
+- pass_threshold: {self.PASS_THRESHOLD}
+- passed: boolean (overall_score >= {self.PASS_THRESHOLD})
+- scores: object with each criterion score
+- matched_skills_mentioned: array of skills from the required list that were mentioned
+- strengths: 2-3 specific strengths observed
+- improvements: 1-2 concrete suggestions
+- summary: 2 sentences of overall assessment""",
+            user=f"Candidate: {candidate_name}\n\nTranscript:\n{transcript[:3000]}",
+            tier=LLMTier.PRIMARY,
             max_tokens=1000,
+            temperature=0.2,
         )
-
-        result = json.loads(response.choices[0].message.content)
         result["weights"] = self.WEIGHTS
         return result

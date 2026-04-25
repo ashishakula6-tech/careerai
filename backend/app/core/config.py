@@ -30,6 +30,11 @@ class Settings(BaseSettings):
 
     # AI Services
     OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    # Model tiers — override in Render env vars to switch models
+    LLM_PRIMARY: str = "claude-opus-4-7"          # best quality (Anthropic)
+    LLM_FAST: str = "claude-sonnet-4-6"           # high-volume / latency-sensitive
+    LLM_FALLBACK: str = "gpt-4o"                   # OpenAI fallback if Anthropic down
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = "us-east-1"
 

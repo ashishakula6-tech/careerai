@@ -180,23 +180,16 @@ class ResumeParserAgent:
     # -----------------------------------------------------------------------
 
     async def _extract_with_llm(self, text: str) -> Optional[dict]:
-        """Send cleaned text to GPT-4o-mini with the Intelligence Engine prompt."""
-        from openai import AsyncOpenAI
+        """Extract resume data using Claude Opus 4.7 (primary) → GPT-4o (fallback)."""
+        from app.services.llm_client import call_llm_json, LLMTier
 
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": f"Extract all candidate data:\n\n{text[:6000]}"},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.1,
+        raw = await call_llm_json(
+            system=SYSTEM_PROMPT,
+            user=f"Extract all candidate data:\n\n{text[:6000]}",
+            tier=LLMTier.PRIMARY,
             max_tokens=3000,
+            temperature=0.1,
         )
-
-        raw = json.loads(response.choices[0].message.content)
 
         # Basic sanity: must have at least one non-empty section
         if not any([

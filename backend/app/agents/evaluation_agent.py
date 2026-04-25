@@ -65,46 +65,37 @@ class EvaluationAgent:
     async def _evaluate_with_llm(
         self, notes: str, job_requirements: Optional[dict]
     ) -> dict:
-        """LLM-based interview evaluation."""
-        from openai import AsyncOpenAI
-
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        """LLM-based interview evaluation — Claude Opus 4.7 primary, GPT-4o fallback."""
+        from app.services.llm_client import call_llm_json, LLMTier
 
         requirements_text = ""
         if job_requirements:
             requirements_text = f"\nJob Requirements: {json.dumps(job_requirements)}"
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""You are an interview evaluation assistant. Analyze interview notes and provide structured scoring.
+        result = await call_llm_json(
+            system=f"""You are an expert interview evaluation assistant for a top-tier recruitment platform.
+Analyze the interview notes carefully and provide structured, objective scoring.
 
 Score each criterion on a 1-5 scale:
-- technical_skills
-- problem_solving
-- communication
-- cultural_fit
+- technical_skills: depth of technical knowledge demonstrated
+- problem_solving: approach to challenges and analytical thinking
+- communication: clarity, structure, and articulation
+- cultural_fit: alignment with professional values and teamwork
 
 Return JSON with:
-- ai_summary: 2-3 sentence summary
+- ai_summary: 2-3 sentence balanced summary
 - structured_scores: object with scores for each criterion
-- strengths: array of 2-3 key strengths
-- areas_for_improvement: array of 1-2 areas
+- strengths: array of 2-3 specific key strengths with evidence
+- areas_for_improvement: array of 1-2 concrete areas to develop
 - ai_recommendation: "proceed" | "second_interview" | "not_proceed"
 
-IMPORTANT: This is a recommendation only. Human judgment is required.{requirements_text}""",
-                },
-                {"role": "user", "content": f"Interview notes:\n\n{notes[:3000]}"},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
+IMPORTANT: This is an AI recommendation only. Final decisions require human judgment.{requirements_text}""",
+            user=f"Interview notes:\n\n{notes[:3000]}",
+            tier=LLMTier.PRIMARY,
             max_tokens=1000,
+            temperature=0.2,
         )
-
-        result = json.loads(response.choices[0].message.content)
-        result["human_decision_required"] = True  # ALWAYS True
+        result["human_decision_required"] = True
         return result
 
     async def _evaluate_with_rules(

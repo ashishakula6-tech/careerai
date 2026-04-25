@@ -155,16 +155,11 @@ class CandidateSearchAgent:
         return filters
 
     async def _parse_with_llm(self, query: str) -> dict:
-        """LLM-based query parsing for complex natural language."""
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        """Parse recruiter search query — Claude Sonnet 4.6 (fast tier, high-volume)."""
+        from app.services.llm_client import call_llm_json, LLMTier
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """Parse the recruiter's search query into structured filters.
+        return await call_llm_json(
+            system="""Parse the recruiter's natural language search query into structured filters.
 Return JSON with:
 - skills: array of skill strings (lowercase)
 - location: string or null (city/country)
@@ -172,12 +167,9 @@ Return JSON with:
 - experience_min: integer or null
 - experience_max: integer or null
 - education: "PhD","Master's","MBA","Bachelor's" or null
-- keyword: any remaining search terms as string, or null"""
-                },
-                {"role": "user", "content": query},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0,
+- keyword: any remaining search terms as string, or null""",
+            user=query,
+            tier=LLMTier.FAST,
             max_tokens=300,
+            temperature=0,
         )
-        return json.loads(response.choices[0].message.content)

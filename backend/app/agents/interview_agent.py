@@ -179,36 +179,28 @@ class AIInterviewAgent:
         return selected
 
     async def _generate_with_llm(self, job_skills: List[str], job_title: str, job_description: str) -> List[dict]:
-        """Generate questions using OpenAI."""
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        """Generate interview questions — Claude Opus 4.7 primary, GPT-4o fallback."""
+        from app.services.llm_client import call_llm_json, LLMTier
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""Generate exactly {self.NUM_QUESTIONS} interview questions for a {job_title} position.
+        result = await call_llm_json(
+            system=f"""You are a senior technical interviewer at a world-class company.
+Generate exactly {self.NUM_QUESTIONS} high-quality interview questions for a {job_title} position.
 Required skills: {', '.join(job_skills)}
 
-Return a JSON array of objects with:
+Return a JSON object with a "questions" array. Each question must have:
 - id: number (1-{self.NUM_QUESTIONS})
-- question: the interview question
+- question: a specific, insightful interview question
 - type: "technical" | "problem_solving" | "behavioral" | "system_design"
 - difficulty: "easy" | "medium" | "hard"
-- skill: which skill this tests
+- skill: which specific skill this tests
 - time_limit_seconds: 180 for easy, 300 for medium, 420 for hard
 
-Mix question types: 2-3 technical, 1 problem-solving, 1 behavioral. Make them specific to the role.""",
-                },
-                {"role": "user", "content": f"Job description: {job_description[:1000]}"},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.7,
+Mix: 2-3 technical, 1 problem-solving, 1 behavioral. Make every question specific and non-generic.""",
+            user=f"Job description: {job_description[:1000]}",
+            tier=LLMTier.PRIMARY,
             max_tokens=2000,
+            temperature=0.7,
         )
-
-        result = json.loads(response.choices[0].message.content)
         return result.get("questions", result) if isinstance(result, dict) else result
 
     async def evaluate_answers(self, questions_and_answers: List[dict], job_title: str, job_skills: List[str]) -> dict:
@@ -301,47 +293,38 @@ Mix question types: 2-3 technical, 1 problem-solving, 1 behavioral. Make them sp
         }
 
     async def _evaluate_with_llm(self, qa_pairs: List[dict], job_title: str, job_skills: List[str]) -> dict:
-        """LLM-based evaluation of interview answers."""
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        """Evaluate interview answers — Claude Opus 4.7 primary, GPT-4o fallback."""
+        from app.services.llm_client import call_llm_json, LLMTier
 
         qa_text = "\n\n".join([
             f"Q{qa.get('id', i+1)} ({qa.get('skill', 'General')}): {qa.get('question', '')}\nAnswer: {qa.get('answer', 'No answer')}"
             for i, qa in enumerate(qa_pairs)
         ])
 
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""You are evaluating a candidate interview for a {job_title} position.
+        result = await call_llm_json(
+            system=f"""You are an expert technical interviewer evaluating a candidate for a {job_title} position.
 Required skills: {', '.join(job_skills)}
 
 Score each answer 1-5:
-1 = Poor/No relevant content
-2 = Below average, major gaps
-3 = Adequate, meets basic expectations
-4 = Good, demonstrates solid knowledge
-5 = Excellent, exceptional depth
+1 = Poor — no relevant content or completely off-topic
+2 = Below average — major knowledge gaps, vague answers
+3 = Adequate — meets basic expectations, some depth
+4 = Good — solid knowledge, clear examples, good reasoning
+5 = Excellent — exceptional depth, real-world insight, impressive
 
 Return JSON with:
-- overall_score: float (average of all scores)
+- overall_score: float (average of all scores, 1 decimal)
 - max_score: 5.0
 - pass_threshold: {self.PASS_THRESHOLD}
 - passed: boolean (overall_score >= {self.PASS_THRESHOLD})
-- question_results: array of {{question_id, question, skill, score, max_score: 5.0, feedback}}
-- overall_feedback: string summary
+- question_results: array of {{question_id, question, skill, score, max_score: 5.0, feedback: specific 1-sentence feedback}}
+- overall_feedback: 2-3 sentence balanced overall assessment
 - recommendation: "proceed" | "not_proceed"
 - human_review_required: true""",
-                },
-                {"role": "user", "content": qa_text},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.2,
+            user=qa_text,
+            tier=LLMTier.PRIMARY,
             max_tokens=3000,
+            temperature=0.2,
         )
-
-        result = json.loads(response.choices[0].message.content)
         result["human_review_required"] = True
         return result
