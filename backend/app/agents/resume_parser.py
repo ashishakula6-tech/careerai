@@ -1,8 +1,9 @@
 """
-Resume Parsing Agent - Extracts structured data from resumes using LLM with
-rule-based fallback. Confidence scores are provided for each section.
+Resume Intelligence Engine — extracts, normalizes, and structures candidate data
+from unstructured resume text into a clean, recruiter-ready format.
 
-If LLM confidence < 0.6, falls back to rule-based parsing.
+Uses a 5-phase LLM extraction pipeline (raw extract → structure → normalize →
+validate → JSON output) with a rule-based fallback when the LLM is unavailable.
 """
 import re
 import json
@@ -11,8 +12,117 @@ from typing import Optional
 from app.core.config import settings
 
 
+SYSTEM_PROMPT = """ROLE (Act Like):
+You are an advanced AI Resume Intelligence Engine designed for a Career AI platform. Your role is to extract, normalize, and structure candidate data from unstructured inputs (resume, profile text, portfolio, or uploaded documents) into a clean, recruiter-ready JSON format.
+
+CONTEXT:
+The system is part of a Career AI platform used by recruiters to evaluate candidates quickly. The extracted data will be stored in a database and displayed in recruiter dashboards. Accuracy, completeness, and structured formatting are critical.
+
+TASKS:
+1. Extract all relevant candidate information from the input.
+2. Categorize the data into structured sections.
+3. Normalize inconsistent formats (dates, skills, institutions).
+4. Infer missing but obvious data when possible (without hallucination).
+5. Maintain high precision — DO NOT fabricate unknown details.
+
+DATA TO EXTRACT:
+1. Personal Information: Full Name, Email, Phone Number, Location, LinkedIn / Portfolio URLs
+2. Profile Summary: Short professional summary (2–4 lines), Career objective (if available)
+3. Education (per entry): Institution Name, Degree, Field of Study, Start Date–End Date (YYYY-MM), Grade/CGPA if available
+4. Experience (per job): Company Name, Role/Title, Duration (Start–End YYYY-MM), Responsibilities (bullet points), Technologies used
+5. Projects (per project): Name, Description, Technologies used, Role, Outcome/Impact
+6. Skills: Technical Skills, Soft Skills, Tools & Technologies
+7. Languages: Language name, Proficiency level
+8. Certifications / Publications / Awards: Title, Issuer/Org, Date, Description
+9. Additional Work: Internships, Freelance, Volunteering, Hackathons, Leadership
+10. Interests: Hobbies, Professional interests
+
+REASONING RULES:
+- Use context to group scattered information.
+- Do not assume data not present in the text.
+- Standardize date format: YYYY-MM
+- Remove duplicates.
+- Keep descriptions concise but meaningful.
+
+PHASED EXECUTION:
+Phase 1 — Raw Extraction: Extract all possible data without structuring.
+Phase 2 — Structuring: Organize into defined categories.
+Phase 3 — Normalization: Fix dates, standardize skills, remove duplicates.
+Phase 4 — Validation: Ensure no empty critical fields, check consistency.
+Phase 5 — Final JSON Output: Return only valid structured JSON.
+
+OUTPUT FORMAT (STRICT JSON ONLY — no markdown, no commentary):
+{
+  "personal_info": {
+    "full_name": "",
+    "email": "",
+    "phone": "",
+    "location": "",
+    "linkedin": "",
+    "portfolio": ""
+  },
+  "summary": "",
+  "education": [
+    {
+      "institution": "",
+      "degree": "",
+      "field": "",
+      "start_date": "",
+      "end_date": "",
+      "grade": ""
+    }
+  ],
+  "experience": [
+    {
+      "company": "",
+      "role": "",
+      "start_date": "",
+      "end_date": "",
+      "responsibilities": [],
+      "technologies": []
+    }
+  ],
+  "projects": [
+    {
+      "name": "",
+      "description": "",
+      "technologies": [],
+      "role": "",
+      "outcome": ""
+    }
+  ],
+  "skills": {
+    "technical": [],
+    "soft": [],
+    "tools": []
+  },
+  "languages": [
+    {"language": "", "proficiency": ""}
+  ],
+  "certifications": [
+    {"title": "", "issuer": "", "date": "", "description": ""}
+  ],
+  "awards": [
+    {"title": "", "issuer": "", "date": "", "description": ""}
+  ],
+  "publications": [
+    {"title": "", "publisher": "", "date": "", "description": ""}
+  ],
+  "additional_work": [
+    {"type": "", "organization": "", "role": "", "duration": "", "description": ""}
+  ],
+  "interests": []
+}
+
+STOPPING CONDITION:
+- Output MUST be valid JSON.
+- No explanations, no extra text, no markdown.
+- If data is missing, return null or empty arrays.
+- Stop immediately after JSON output."""
+
+
 class ResumeParserAgent:
-    """Parses resumes into structured candidate profiles."""
+    """Parses resumes into structured candidate profiles using the Resume Intelligence Engine."""
 
     COMMON_SKILLS = [
         # Software / IT
@@ -28,14 +138,14 @@ class ResumeParserAgent:
         "excel", "powerpoint", "word", "google sheets", "tableau", "power bi", "looker",
         "salesforce", "sap", "oracle", "erp", "crm", "hubspot", "zoho",
         "react native", "flutter", "ios", "android", "mobile",
-        # Photography / Videography / Creative
+        # Photography / Creative
         "photography", "videography", "photo editing", "lightroom", "photoshop", "premiere pro",
         "after effects", "final cut pro", "davinci resolve", "camera operation", "lighting",
         "color grading", "retouching", "portrait photography", "wedding photography", "product photography",
         "drone photography", "film making", "video editing", "motion graphics", "animation",
         "3d modeling", "blender", "maya", "cinema 4d", "illustrator", "indesign", "canva",
-        "graphic design", "branding", "logo design", "typography", "print design", "packaging design",
-        # Teaching / Education / Training
+        "graphic design", "branding", "logo design", "typography", "print design",
+        # Teaching / Education
         "teaching", "tutoring", "curriculum design", "lesson planning", "classroom management",
         "online teaching", "e-learning", "lms", "moodle", "canvas", "google classroom",
         "training", "corporate training", "coaching", "mentoring", "public speaking",
@@ -55,41 +165,41 @@ class ResumeParserAgent:
         "quickbooks", "tally", "xero", "sage", "sap fico",
         "business development", "strategy", "consulting", "market research",
         "business analysis", "requirements gathering", "stakeholder management",
-        # Marketing / Sales / PR
+        # Marketing / Sales
         "digital marketing", "seo", "sem", "google ads", "facebook ads", "social media marketing",
         "content marketing", "email marketing", "copywriting", "content writing", "blogging",
         "brand management", "pr", "public relations", "event management", "event planning",
-        "market research", "analytics", "google analytics", "a/b testing", "conversion optimization",
-        "sales", "cold calling", "lead generation", "negotiation", "crm", "pipeline management",
+        "google analytics", "a/b testing", "conversion optimization",
+        "sales", "cold calling", "lead generation", "negotiation", "pipeline management",
         "customer service", "customer success", "account management", "client relations",
-        # HR / Recruitment / Admin
+        # HR / Recruitment
         "recruitment", "talent acquisition", "interviewing", "onboarding", "employee relations",
         "performance management", "compensation", "benefits", "payroll", "hr analytics",
         "workday", "bamboohr", "successfactors", "peoplesoft",
-        "office administration", "scheduling", "data entry", "filing", "records management",
+        "office administration", "scheduling", "data entry", "records management",
         "receptionist", "executive assistant", "virtual assistant",
         # Legal
         "legal research", "contract drafting", "litigation", "corporate law", "intellectual property",
-        "compliance", "regulatory", "legal writing", "paralegal", "notary",
-        # Engineering / Manufacturing / Construction
+        "regulatory", "legal writing", "paralegal", "notary",
+        # Engineering / Manufacturing
         "mechanical engineering", "electrical engineering", "civil engineering", "chemical engineering",
         "autocad", "solidworks", "catia", "ansys", "matlab", "plc", "scada",
         "quality control", "quality assurance", "six sigma", "lean manufacturing",
         "project planning", "construction management", "site supervision", "safety management",
-        "welding", "cnc", "machining", "fabrication", "assembly",
-        # Hospitality / Food / Travel
+        "welding", "cnc", "machining", "fabrication",
+        # Hospitality / Food
         "hotel management", "front desk", "housekeeping", "concierge", "reservation",
         "restaurant management", "food service", "cooking", "chef", "baking", "pastry",
         "bartending", "catering", "food safety", "haccp",
         "travel planning", "tour guide", "tourism", "airline", "ticketing",
-        # Fitness / Sports / Wellness
+        # Fitness / Sports
         "personal training", "fitness coaching", "yoga", "pilates", "nutrition coaching",
         "sports coaching", "athletics", "swimming", "martial arts",
         "massage therapy", "spa management", "wellness", "meditation",
-        # Real Estate / Property
+        # Real Estate
         "real estate", "property management", "leasing", "valuation", "mortgage",
         "interior design", "space planning", "architecture", "urban planning",
-        # Logistics / Supply Chain / Warehouse
+        # Logistics / Supply Chain
         "logistics", "supply chain", "inventory management", "warehouse management",
         "procurement", "vendor management", "shipping", "freight", "customs",
         "fleet management", "route planning", "last mile delivery",
@@ -97,7 +207,7 @@ class ResumeParserAgent:
         "agriculture", "farming", "horticulture", "organic farming",
         "environmental science", "sustainability", "renewable energy", "solar", "wind energy",
         "waste management", "recycling", "conservation",
-        # Media / Journalism / Writing
+        # Media / Writing
         "journalism", "reporting", "editing", "proofreading", "technical writing",
         "creative writing", "screenwriting", "podcast", "radio", "broadcasting",
         "translation", "interpretation", "localization",
@@ -116,37 +226,30 @@ class ResumeParserAgent:
     ]
 
     DEGREE_LEVELS = {
-        "phd": "PhD",
-        "doctorate": "PhD",
-        "doctor": "PhD",
-        "master": "Master's",
-        "mba": "MBA",
-        "bachelor": "Bachelor's",
-        "associate": "Associate's",
-        "diploma": "Diploma",
-        "certificate": "Certificate",
+        "phd": "PhD", "doctorate": "PhD", "doctor": "PhD",
+        "master": "Master's", "mba": "MBA",
+        "bachelor": "Bachelor's", "associate": "Associate's",
+        "diploma": "Diploma", "certificate": "Certificate",
     }
 
     async def parse_resume(self, text_content: str) -> dict:
-        """Parse resume text into structured data.
+        """Parse resume text through the Resume Intelligence Engine.
 
-        First attempts LLM parsing. If confidence is below threshold,
-        falls back to rule-based parsing.
+        Attempts LLM-powered 5-phase extraction first; falls back to rule-based
+        parsing if the LLM is unavailable or confidence is too low.
         """
-        # Try LLM parsing if API key is available
         if settings.OPENAI_API_KEY:
             try:
                 llm_result = await self._parse_with_llm(text_content)
                 if llm_result and llm_result.get("overall_confidence", 0) >= settings.CONFIDENCE_THRESHOLD:
                     return llm_result
             except Exception:
-                pass  # Fall through to rule-based
+                pass
 
-        # Rule-based fallback
         return await self._parse_with_rules(text_content)
 
     async def _parse_with_llm(self, text_content: str) -> Optional[dict]:
-        """Parse resume using OpenAI LLM."""
+        """5-phase Resume Intelligence Engine extraction via LLM."""
         try:
             from openai import AsyncOpenAI
 
@@ -155,68 +258,125 @@ class ResumeParserAgent:
             response = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": """You are a resume parsing assistant. Extract structured data from the resume text.
-Return a JSON object with these fields:
-- skills: array of skill strings
-- experience: array of objects with {company, role, years, description}
-- education: array of objects with {degree, field, university, year}
-- summary: brief professional summary (2-3 sentences)
-- confidence_scores: object with {skills: 0-1, experience: 0-1, education: 0-1}
-
-Be accurate and conservative with confidence scores.""",
-                    },
-                    {"role": "user", "content": f"Parse this resume:\n\n{text_content[:4000]}"},
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Extract all candidate data from this resume:\n\n{text_content[:6000]}"},
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.1,
-                max_tokens=2000,
+                max_tokens=3000,
             )
 
-            parsed = json.loads(response.choices[0].message.content)
+            raw = json.loads(response.choices[0].message.content)
 
-            confidence_scores = parsed.get("confidence_scores", {})
-            overall = sum(confidence_scores.values()) / max(len(confidence_scores), 1)
+            # --- Flatten skills for the matching engine ---
+            skills_block = raw.get("skills", {})
+            if isinstance(skills_block, dict):
+                all_skills = (
+                    skills_block.get("technical", []) +
+                    skills_block.get("soft", []) +
+                    skills_block.get("tools", [])
+                )
+            else:
+                all_skills = skills_block if isinstance(skills_block, list) else []
+            all_skills = list(dict.fromkeys(s for s in all_skills if s))  # deduplicate, preserve order
+
+            # --- Normalise experience entries ---
+            raw_exp = raw.get("experience", [])
+            experience = []
+            for e in (raw_exp or []):
+                if not isinstance(e, dict):
+                    continue
+                years = _date_range_to_years(e.get("start_date"), e.get("end_date"))
+                desc = ""
+                responsibilities = e.get("responsibilities", [])
+                if responsibilities:
+                    desc = " | ".join(responsibilities[:5])
+                experience.append({
+                    "company": e.get("company") or "Not specified",
+                    "role": e.get("role") or "Not specified",
+                    "years": years,
+                    "start_date": e.get("start_date") or "",
+                    "end_date": e.get("end_date") or "",
+                    "description": desc,
+                    "technologies": e.get("technologies", []),
+                })
+
+            # --- Normalise education entries ---
+            raw_edu = raw.get("education", [])
+            education = []
+            for edu in (raw_edu or []):
+                if not isinstance(edu, dict):
+                    continue
+                education.append({
+                    "degree": edu.get("degree") or "Not specified",
+                    "field": edu.get("field") or "Not specified",
+                    "university": edu.get("institution") or "Not specified",
+                    "year": (edu.get("end_date") or "")[:4] or None,
+                    "grade": edu.get("grade") or "",
+                })
+
+            # --- Confidence scoring ---
+            conf_skills = min(1.0, len(all_skills) * 0.05) if all_skills else 0.3
+            conf_exp = 0.9 if experience else 0.4
+            conf_edu = 0.9 if education else 0.4
+            overall = round((conf_skills + conf_exp + conf_edu) / 3, 2)
+
+            # --- Personal info ---
+            personal = raw.get("personal_info", {}) or {}
 
             return {
-                "skills": parsed.get("skills", []),
-                "experience": parsed.get("experience", []),
-                "education": parsed.get("education", []),
-                "summary": parsed.get("summary", ""),
-                "confidence_scores": confidence_scores,
-                "overall_confidence": round(overall, 2),
+                # Fields used by the matching engine and profile storage
+                "skills": all_skills,
+                "experience": experience,
+                "education": education,
+                "summary": raw.get("summary") or "",
+                "confidence_scores": {
+                    "skills": round(conf_skills, 2),
+                    "experience": round(conf_exp, 2),
+                    "education": round(conf_edu, 2),
+                },
+                "overall_confidence": overall,
                 "parsing_method": "llm",
+                # Enriched fields stored in metadata / recruiter dashboard
+                "personal_info": personal,
+                "projects": raw.get("projects", []) or [],
+                "certifications": raw.get("certifications", []) or [],
+                "awards": raw.get("awards", []) or [],
+                "publications": raw.get("publications", []) or [],
+                "languages": raw.get("languages", []) or [],
+                "additional_work": raw.get("additional_work", []) or [],
+                "interests": raw.get("interests", []) or [],
+                "skills_breakdown": {
+                    "technical": skills_block.get("technical", []) if isinstance(skills_block, dict) else [],
+                    "soft": skills_block.get("soft", []) if isinstance(skills_block, dict) else [],
+                    "tools": skills_block.get("tools", []) if isinstance(skills_block, dict) else [],
+                },
             }
         except Exception:
             return None
 
     async def _parse_with_rules(self, text_content: str) -> dict:
-        """Rule-based resume parsing as fallback."""
+        """Rule-based resume parsing — used when LLM is unavailable."""
         text_lower = text_content.lower()
 
-        # Extract skills
+        # Skills
         found_skills = []
         for skill in self.COMMON_SKILLS:
             if skill.lower() in text_lower:
                 found_skills.append(skill.title() if len(skill) > 3 else skill.upper())
 
-        # Extract education
+        # Education
         education = []
         for pattern in self.EDUCATION_PATTERNS:
-            matches = re.finditer(pattern, text_content)
-            for match in matches:
+            for match in re.finditer(pattern, text_content):
                 degree_text = match.group().lower()
                 degree_level = "Bachelor's"
                 for key, value in self.DEGREE_LEVELS.items():
                     if key in degree_text:
                         degree_level = value
                         break
-
-                # Try to find field of study nearby
                 context = text_content[max(0, match.start() - 20):match.end() + 100]
                 field = self._extract_field_of_study(context)
-
                 education.append({
                     "degree": degree_level,
                     "field": field or "Not specified",
@@ -224,7 +384,6 @@ Be accurate and conservative with confidence scores.""",
                     "year": None,
                 })
 
-        # Deduplicate education
         seen = set()
         unique_education = []
         for edu in education:
@@ -233,7 +392,7 @@ Be accurate and conservative with confidence scores.""",
                 seen.add(key)
                 unique_education.append(edu)
 
-        # Extract experience (years)
+        # Experience
         experience = []
         year_patterns = re.findall(r"(\d+)\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience)?", text_lower)
         if year_patterns:
@@ -245,10 +404,6 @@ Be accurate and conservative with confidence scores.""",
                 "description": "Extracted from resume text",
             })
 
-        # Extract emails for contact info
-        emails = re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", text_content)
-
-        # Generate summary
         summary = f"Candidate with {len(found_skills)} identified skills"
         if experience:
             summary += f" and {experience[0]['years']} years of experience"
@@ -256,15 +411,14 @@ Be accurate and conservative with confidence scores.""",
             summary += f". Education: {unique_education[0]['degree']}"
         summary += "."
 
-        # Calculate confidence scores (rule-based is lower)
         skills_conf = min(0.7, len(found_skills) * 0.07)
         exp_conf = 0.5 if experience else 0.2
         edu_conf = 0.6 if unique_education else 0.2
 
         return {
-            "skills": found_skills[:20],  # Cap at 20
+            "skills": found_skills[:20],
             "experience": experience,
-            "education": unique_education[:3],  # Cap at 3
+            "education": unique_education[:3],
             "summary": summary,
             "confidence_scores": {
                 "skills": round(skills_conf, 2),
@@ -273,10 +427,18 @@ Be accurate and conservative with confidence scores.""",
             },
             "overall_confidence": round((skills_conf + exp_conf + edu_conf) / 3, 2),
             "parsing_method": "rule_based",
+            "personal_info": {},
+            "projects": [],
+            "certifications": [],
+            "awards": [],
+            "publications": [],
+            "languages": [],
+            "additional_work": [],
+            "interests": [],
+            "skills_breakdown": {"technical": found_skills[:20], "soft": [], "tools": []},
         }
 
     def _extract_field_of_study(self, context: str) -> Optional[str]:
-        """Try to extract field of study from text near degree mention."""
         fields = [
             "computer science", "software engineering", "information technology",
             "electrical engineering", "mechanical engineering", "data science",
@@ -289,3 +451,24 @@ Be accurate and conservative with confidence scores.""",
             if field in context_lower:
                 return field.title()
         return None
+
+
+def _date_range_to_years(start: Optional[str], end: Optional[str]) -> float:
+    """Estimate years of experience from YYYY-MM date strings."""
+    try:
+        import datetime
+        def parse_ym(s):
+            if not s:
+                return None
+            parts = s.strip().split("-")
+            year = int(parts[0])
+            month = int(parts[1]) if len(parts) > 1 else 6
+            return datetime.date(year, month, 1)
+
+        s = parse_ym(start)
+        e = parse_ym(end) if end and end.lower() not in ("present", "current", "now") else datetime.date.today()
+        if s and e and e > s:
+            return round((e - s).days / 365.25, 1)
+    except Exception:
+        pass
+    return 0.0

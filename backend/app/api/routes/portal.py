@@ -114,15 +114,30 @@ def get_candidate_profile(email: str = Query(...), db: Session = Depends(get_db)
     if not profile:
         return {"profile": None}
 
+    try:
+        meta = json.loads(candidate.metadata_json or "{}")
+    except Exception:
+        meta = {}
+
     return {
         "profile": {
             "id": candidate.id,
             "name": f"{candidate.first_name} {candidate.last_name}",
             "email": candidate.email,
+            "phone": candidate.phone or "",
             "skills": profile.skills_list,
             "experience": profile.experience_list,
             "education": profile.education_list,
             "summary": profile.summary or "",
+            "parsing_method": profile.parsing_method or "rule_based",
+            "projects": meta.get("projects", []),
+            "certifications": meta.get("certifications", []),
+            "awards": meta.get("awards", []),
+            "publications": meta.get("publications", []),
+            "languages": meta.get("languages", []),
+            "additional_work": meta.get("additional_work", []),
+            "interests": meta.get("interests", []),
+            "skills_breakdown": meta.get("skills_breakdown", {}),
         }
     }
 
@@ -546,6 +561,19 @@ async def upload_resume_and_match(
     if old_profile:
         old_profile.is_current = False
 
+    # Enrich metadata with all fields extracted by the Intelligence Engine
+    enriched_meta = {
+        "personal_info": parsed.get("personal_info", {}),
+        "projects": parsed.get("projects", []),
+        "certifications": parsed.get("certifications", []),
+        "awards": parsed.get("awards", []),
+        "publications": parsed.get("publications", []),
+        "languages": parsed.get("languages", []),
+        "additional_work": parsed.get("additional_work", []),
+        "interests": parsed.get("interests", []),
+        "skills_breakdown": parsed.get("skills_breakdown", {}),
+    }
+
     profile = CandidateProfile(
         candidate_id=candidate.id, tenant_id=tid,
         skills=json.dumps(candidate_skills),
@@ -559,11 +587,13 @@ async def upload_resume_and_match(
     )
     db.add(profile)
     candidate.status = "parsed"
+    candidate.metadata_json = json.dumps(enriched_meta)
 
     db.add(AuditLog(
         tenant_id=tid, action="RESUME_UPLOADED_PORTAL", entity_type="candidate",
         entity_id=candidate.id,
-        details_json=json.dumps({"email": email, "skills_found": len(candidate_skills)}),
+        details_json=json.dumps({"email": email, "skills_found": len(candidate_skills),
+                                 "parsing_method": parsed.get("parsing_method", "rule_based")}),
     ))
     db.commit()
     db.refresh(candidate)
