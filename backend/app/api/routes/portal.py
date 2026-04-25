@@ -96,6 +96,37 @@ def candidate_login(email: str, password: str, db: Session = Depends(get_db)):
                           "name": f"{candidate.first_name} {candidate.last_name}"}}
 
 
+@router.get("/candidate/me")
+def get_candidate_profile(email: str = Query(...), db: Session = Depends(get_db)):
+    """Return the candidate's current profile so the frontend can show skills after login."""
+    tid = _get_default_tenant(db)
+    candidate = db.query(Candidate).filter(
+        Candidate.email == email, Candidate.tenant_id == tid, Candidate.deleted_at.is_(None)
+    ).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    profile = db.query(CandidateProfile).filter(
+        CandidateProfile.candidate_id == candidate.id,
+        CandidateProfile.is_current == True,
+    ).first()
+
+    if not profile:
+        return {"profile": None}
+
+    return {
+        "profile": {
+            "id": candidate.id,
+            "name": f"{candidate.first_name} {candidate.last_name}",
+            "email": candidate.email,
+            "skills": profile.skills_list,
+            "experience": profile.experience_list,
+            "education": profile.education_list,
+            "summary": profile.summary or "",
+        }
+    }
+
+
 @router.get("/jobs")
 def list_public_jobs(
     q: Optional[str] = Query(None, description="Search query - matches title, description, skills, location"),

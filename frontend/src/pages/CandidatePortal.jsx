@@ -25,6 +25,7 @@ export default function CandidatePortal() {
 
   // Recent jobs on landing
   const [recentJobs, setRecentJobs] = useState([]);
+  const [recentJobsLoading, setRecentJobsLoading] = useState(true);
 
   // Resume + profile
   const [resume, setResume] = useState(null);
@@ -53,6 +54,7 @@ export default function CandidatePortal() {
   // Job apply
   const [selectedJob, setSelectedJob] = useState(null);
   const [applyResult, setApplyResult] = useState(null); // kept for apply-success view
+  const [jobDetailReturn, setJobDetailReturn] = useState('matches'); // where to go when user hits Back on job-detail
 
   // Status
   const [applications, setApplications] = useState([]);
@@ -66,20 +68,30 @@ export default function CandidatePortal() {
 
   // ==================== SESSION RESTORE + RECENT JOBS ====================
   useEffect(() => {
-    // Restore candidate session from localStorage
+    // Restore candidate session from localStorage and fetch their profile
     try {
       const stored = localStorage.getItem('candidate_auth');
       if (stored) {
         const parsed = JSON.parse(stored);
         setCandidateAuth(parsed);
         setEmail(parsed.email || '');
+        // Silently fetch their saved profile so skills show immediately
+        api.get('/portal/candidate/me', { params: { email: parsed.email }, headers: { Authorization: undefined } })
+          .then(res => { if (res.data.profile) setProfile(res.data.profile); })
+          .catch(() => {});
       }
     } catch {}
 
-    // Load recent jobs for landing page
-    api.get('/portal/jobs', { params: { limit: 8 }, headers: { Authorization: undefined } })
-      .then(res => setRecentJobs(res.data.jobs || []))
-      .catch(() => {});
+    // Load recent jobs — retry up to 3 times because free-tier backend may be waking up
+    const fetchRecentJobs = (attempt = 0) => {
+      api.get('/portal/jobs', { params: { limit: 8 }, headers: { Authorization: undefined } })
+        .then(res => { setRecentJobs(res.data.jobs || []); setRecentJobsLoading(false); })
+        .catch(() => {
+          if (attempt < 3) setTimeout(() => fetchRecentJobs(attempt + 1), 8000);
+          else setRecentJobsLoading(false);
+        });
+    };
+    fetchRecentJobs();
   }, []);
 
   // ==================== CANDIDATE AUTH ====================
@@ -97,6 +109,11 @@ export default function CandidatePortal() {
       localStorage.setItem('candidate_auth', JSON.stringify(auth));
       setAuthView(null);
       setAuthForm({ email: '', password: '', first_name: '', last_name: '', phone: '' });
+      // Fetch existing profile so skills are available
+      try {
+        const pr = await api.get('/portal/candidate/me', { params: { email: auth.email }, headers: { Authorization: undefined } });
+        if (pr.data.profile) setProfile(pr.data.profile);
+      } catch {}
     } catch (err) {
       setAuthError(err.response?.data?.detail || 'Login failed. Please try again.');
     } finally {
@@ -122,6 +139,11 @@ export default function CandidatePortal() {
       localStorage.setItem('candidate_auth', JSON.stringify(auth));
       setAuthView(null);
       setAuthForm({ email: '', password: '', first_name: '', last_name: '', phone: '' });
+      // Fetch existing profile if they had one
+      try {
+        const pr = await api.get('/portal/candidate/me', { params: { email: auth.email }, headers: { Authorization: undefined } });
+        if (pr.data.profile) setProfile(pr.data.profile);
+      } catch {}
     } catch (err) {
       setAuthError(err.response?.data?.detail || 'Registration failed. Please try again.');
     } finally {
@@ -555,21 +577,67 @@ export default function CandidatePortal() {
           </div>
         </div>
 
-        {/* Recent Jobs */}
-        {recentJobs.length > 0 && (
-          <div className="relative z-10 max-w-7xl mx-auto px-6 pb-16">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black text-white">Recently Added Jobs</h2>
-              <button onClick={() => { setLandingQuery(''); handleLandingSearch({ preventDefault: () => {} }); }}
-                className="text-sm text-white/60 hover:text-white transition flex items-center gap-1">
-                View all <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
-              </button>
+        {/* Candidate Skills Card — shown after login */}
+        {candidateAuth && profile?.skills?.length > 0 && (
+          <div className="relative z-10 max-w-7xl mx-auto px-6 pb-10">
+            <div className="glass rounded-2xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
+                    {candidateAuth.name?.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="text-white font-bold">{candidateAuth.name}</p>
+                    <p className="text-white/50 text-xs">Your saved profile</p>
+                  </div>
+                </div>
+                <button onClick={() => setView('upload')} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl border border-white/20 transition">
+                  Update Resume
+                </button>
+              </div>
+              <p className="text-white/60 text-xs mb-3">Your skills ({profile.skills.length})</p>
+              <div className="flex flex-wrap gap-2">
+                {profile.skills.map(s => (
+                  <span key={s} className="px-3 py-1 bg-indigo-500/20 text-indigo-200 rounded-full text-sm border border-indigo-400/30">{s}</span>
+                ))}
+              </div>
+              {profile.summary && (
+                <p className="mt-3 text-white/50 text-sm italic line-clamp-2">{profile.summary}</p>
+              )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {recentJobs.slice(0, 8).map(job => (
+          </div>
+        )}
+
+        {/* Recent Jobs */}
+        <div className="relative z-10 max-w-7xl mx-auto px-6 pb-16">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-black text-white">Recently Added Jobs</h2>
+            <button onClick={() => { setLandingQuery(''); setSearchResults(recentJobs); setView('search-results'); }}
+              className="text-sm text-white/60 hover:text-white transition flex items-center gap-1">
+              View all <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {recentJobsLoading ? (
+              Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="glass rounded-2xl p-5 border border-white/10 animate-pulse">
+                  <div className="h-4 bg-white/10 rounded mb-2 w-3/4" />
+                  <div className="h-3 bg-white/10 rounded mb-4 w-1/2" />
+                  <div className="flex gap-1 mb-3">
+                    <div className="h-5 w-12 bg-white/10 rounded" />
+                    <div className="h-5 w-16 bg-white/10 rounded" />
+                  </div>
+                  <div className="h-7 bg-white/10 rounded mt-3" />
+                </div>
+              ))
+            ) : recentJobs.length === 0 ? (
+              <div className="col-span-4 text-center py-8 text-white/40">
+                <p className="text-sm">Jobs loading… backend is waking up, refresh in a moment.</p>
+              </div>
+            ) : recentJobs.slice(0, 8).map(job => (
                 <div key={job.id}
                   className="glass rounded-2xl p-5 border border-white/10 card-hover cursor-pointer"
-                  onClick={() => { setSelectedJob(job); setView('job-detail'); }}>
+                  onClick={() => { setSelectedJob(job); setJobDetailReturn('landing'); setView('job-detail'); }}>
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <h3 className="text-white font-bold text-sm leading-tight line-clamp-2">{job.title}</h3>
                     <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -595,9 +663,8 @@ export default function CandidatePortal() {
                   </button>
                 </div>
               ))}
-            </div>
           </div>
-        )}
+        </div>
 
         {/* How it works */}
         <div className="relative z-10 max-w-7xl mx-auto px-6 pb-20">
@@ -779,7 +846,7 @@ export default function CandidatePortal() {
               </div>
             ) : searchResults.map(job => (
               <div key={job.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer"
-                onClick={() => { setSelectedJob(job); setView('job-detail'); }}>
+                onClick={() => { setSelectedJob(job); setJobDetailReturn('search-results'); setView('job-detail'); }}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
@@ -1377,7 +1444,7 @@ export default function CandidatePortal() {
                 <div key={job.id}
                   className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden card-hover cursor-pointer group animate-slide-up"
                   style={{ animationDelay: `${idx * 0.05}s` }}
-                  onClick={() => { setSelectedJob(job); setView('job-detail'); }}>
+                  onClick={() => { setSelectedJob(job); setJobDetailReturn('matches'); setView('job-detail'); }}>
                   {/* Top match strip */}
                   <div className={`h-1 ${
                     job.match_score >= 0.7 ? 'bg-gradient-to-r from-emerald-400 to-teal-500' :
@@ -1459,7 +1526,9 @@ export default function CandidatePortal() {
         {/* ===== JOB DETAIL ===== */}
         {view === 'job-detail' && selectedJob && (
           <div>
-            <button onClick={() => setView('matches')} className="text-sm text-blue-600 hover:underline mb-4 inline-block">&larr; Back to matched jobs</button>
+            <button onClick={() => setView(jobDetailReturn)} className="text-sm text-blue-600 hover:underline mb-4 inline-block">
+              &larr; {jobDetailReturn === 'matches' ? 'Back to matched jobs' : jobDetailReturn === 'search-results' ? 'Back to search results' : 'Back to home'}
+            </button>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
@@ -1495,15 +1564,45 @@ export default function CandidatePortal() {
               <h3 className="font-semibold text-gray-900 mb-2">About the role</h3>
               <p className="text-gray-600 leading-relaxed mb-6">{selectedJob.description}</p>
 
-              <h3 className="font-semibold text-gray-900 mb-2">Your skill match</h3>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {(selectedJob.matching_skills || []).map(s => (
-                  <span key={s} className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-200">&#10003; {s}</span>
-                ))}
-                {(selectedJob.missing_skills || []).map(s => (
-                  <span key={s} className="px-3 py-1.5 bg-red-50 text-red-400 rounded-lg text-sm border border-red-100">&#10007; {s}</span>
-                ))}
-              </div>
+              {(() => {
+                const jobSkills = selectedJob.skills || [];
+                const candidateSkills = (profile?.skills || []).map(s => s.toLowerCase());
+                const hasAiData = (selectedJob.matching_skills || []).length > 0 || (selectedJob.missing_skills || []).length > 0;
+                const matching = hasAiData
+                  ? (selectedJob.matching_skills || [])
+                  : jobSkills.filter(s => candidateSkills.includes(s.toLowerCase()));
+                const missing = hasAiData
+                  ? (selectedJob.missing_skills || [])
+                  : jobSkills.filter(s => !candidateSkills.includes(s.toLowerCase()));
+                if (!jobSkills.length) return null;
+                return (
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-gray-900">
+                        {candidateSkills.length ? 'Your skill match' : 'Required skills'}
+                      </h3>
+                      {candidateSkills.length > 0 && (
+                        <span className="text-xs text-gray-500">
+                          {matching.length}/{jobSkills.length} skills matched
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {matching.map(s => (
+                        <span key={s} className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-200">&#10003; {s}</span>
+                      ))}
+                      {missing.map(s => (
+                        <span key={s} className="px-3 py-1.5 bg-red-50 text-red-400 rounded-lg text-sm border border-red-100">&#10007; {s}</span>
+                      ))}
+                    </div>
+                    {!candidateSkills.length && (
+                      <p className="mt-2 text-xs text-indigo-600">
+                        <button onClick={() => setAuthView('login')} className="underline">Sign in</button> or <button onClick={() => setView('upload')} className="underline">upload your resume</button> to see how your skills match this role.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Ranking factors */}
               {selectedJob.ranking_factors && (
