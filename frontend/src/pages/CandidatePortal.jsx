@@ -66,6 +66,10 @@ export default function CandidatePortal() {
   // Interview
   const [interviewData, setInterviewData] = useState(null);
 
+  // Skills panel
+  const [skillsExpanded, setSkillsExpanded] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState(null); // skill name whose info tooltip is shown
+
   // ==================== SESSION RESTORE + RECENT JOBS ====================
   useEffect(() => {
     // Restore candidate session from localStorage and fetch their profile
@@ -409,6 +413,86 @@ export default function CandidatePortal() {
 
   const scoreColor = (s) => s >= 0.7 ? 'text-green-600' : s >= 0.4 ? 'text-yellow-600' : 'text-red-500';
   const scoreBarColor = (s) => s >= 0.7 ? 'bg-green-500' : s >= 0.4 ? 'bg-yellow-500' : 'bg-red-500';
+
+  // ==================== SKILL INFO ====================
+  const SKILL_INFO = {
+    'python': 'A versatile high-level programming language widely used in data science, AI, web development, and automation.',
+    'java': 'Object-oriented language used for enterprise apps, Android development, and scalable web backends.',
+    'c++': 'High-performance systems programming language used in game development, embedded systems, and OS.',
+    'c#': 'Microsoft\'s object-oriented language for Windows apps, Unity game development, and enterprise software.',
+    'javascript': 'The primary language of the web — powers browser interactivity and backend via Node.js.',
+    'typescript': 'Typed superset of JavaScript enabling better tooling and fewer runtime errors in large codebases.',
+    'react': 'Meta\'s JavaScript library for building fast, interactive user interfaces and single-page apps.',
+    'vue': 'Progressive JavaScript framework for building user interfaces with a gentle learning curve.',
+    'angular': 'Google\'s TypeScript-based framework for building enterprise-scale single-page applications.',
+    'node.js': 'JavaScript runtime for building scalable server-side and network applications outside the browser.',
+    'next.js': 'React meta-framework with server-side rendering, static generation, and full-stack capabilities.',
+    'sql': 'Standard language for querying and managing relational databases like MySQL, PostgreSQL, SQL Server.',
+    'mysql': 'Widely-used open-source relational database system, backbone of many web applications.',
+    'postgresql': 'Advanced open-source relational database known for reliability, standards compliance, and performance.',
+    'mongodb': 'NoSQL document database storing JSON-like documents — ideal for flexible, rapidly changing data.',
+    'redis': 'In-memory data store used as a high-speed cache, session store, and message broker.',
+    'aws': 'Amazon Web Services — the world\'s leading cloud platform with 200+ services for compute, storage, and AI.',
+    'azure': 'Microsoft\'s cloud platform offering compute, AI, databases, and DevOps services globally.',
+    'gcp': 'Google Cloud Platform — cloud services for compute, big data, AI, and Kubernetes management.',
+    'docker': 'Platform for packaging apps into containers so they run consistently across any environment.',
+    'kubernetes': 'Open-source orchestration system for automating deployment, scaling, and management of containers.',
+    'linux': 'Open-source OS kernel powering most servers, cloud infrastructure, and embedded systems worldwide.',
+    'git': 'Distributed version control system for tracking code changes and collaborating across teams.',
+    'devops': 'Culture and practice combining development and operations for faster, more reliable software delivery.',
+    'ci/cd': 'Continuous Integration/Deployment — automating the build, test, and release pipeline.',
+    'terraform': 'HashiCorp\'s Infrastructure as Code tool for provisioning cloud resources declaratively.',
+    'ansible': 'Agentless automation tool for configuration management, app deployment, and orchestration.',
+    'jenkins': 'Open-source automation server for building, testing, and deploying code continuously.',
+    'machine learning': 'AI branch where systems learn patterns from data to make predictions without explicit programming.',
+    'deep learning': 'ML subset using multi-layer neural networks — excels at image, speech, and language tasks.',
+    'ai': 'Artificial Intelligence — building systems that perform tasks requiring human-like intelligence.',
+    'nlp': 'Natural Language Processing — AI techniques for understanding, generating, and translating human language.',
+    'computer vision': 'AI field enabling machines to interpret and understand images and video like humans.',
+    'data science': 'Combining statistics, programming, and domain expertise to extract insights and value from data.',
+    'data analysis': 'Inspecting, cleaning, and modeling data to discover patterns and support decision-making.',
+    'tensorflow': 'Google\'s open-source ML framework for building and training neural networks at scale.',
+    'pytorch': 'Meta\'s deep learning framework known for flexibility and ease of research.',
+    'spark': 'Apache Spark — fast, distributed data processing engine for large-scale analytics.',
+    'hadoop': 'Framework for distributed storage and processing of massive datasets across server clusters.',
+    'excel': 'Microsoft\'s spreadsheet software for data analysis, financial modeling, and business reporting.',
+    'power bi': 'Microsoft\'s business intelligence tool for creating interactive dashboards and data visualizations.',
+    'tableau': 'Leading data visualization platform for turning raw data into insightful, shareable dashboards.',
+    'blockchain': 'Decentralized distributed ledger powering cryptocurrencies, smart contracts, and Web3 apps.',
+    'cybersecurity': 'Protecting computer systems, networks, and data from digital attacks, theft, and damage.',
+    'networking': 'Designing, implementing, and managing computer networks and communication infrastructure.',
+    'agile': 'Iterative software methodology emphasizing collaboration, flexibility, and incremental delivery.',
+    'scrum': 'Agile framework using time-boxed sprints and ceremonies for structured team development.',
+    'project management': 'Planning, executing, and closing projects while managing scope, time, budget, and risk.',
+    'leadership': 'Guiding, motivating, and developing teams to achieve strategic organizational goals.',
+    'communication': 'Clearly conveying information verbally, in writing, and through presentations to varied audiences.',
+    'sem': 'Search Engine Marketing — running paid ads on search engines like Google to drive targeted traffic.',
+    'seo': 'Search Engine Optimization — improving website visibility in organic (unpaid) search results.',
+    'pr': 'Public Relations — managing reputation and communications between organizations and their audiences.',
+    'training': 'Designing and delivering programs to build skills, knowledge, and competency in others.',
+    'figma': 'Cloud-based design tool for UI/UX prototyping, wireframing, and collaborative design.',
+    'flutter': 'Google\'s framework for building natively compiled apps for mobile, web, and desktop from one codebase.',
+    'kotlin': 'Modern JVM language for Android development, fully interoperable with Java.',
+    'swift': 'Apple\'s fast, safe programming language for iOS, macOS, watchOS, and tvOS apps.',
+    'r': 'Statistical programming language for data analysis, bioinformatics, and academic research.',
+    'django': 'High-level Python web framework promoting rapid development and clean design patterns.',
+    'fastapi': 'Modern async Python framework for building high-performance APIs with automatic docs.',
+    'spring': 'Java enterprise framework for building robust, scalable web apps and microservices.',
+    'graphql': 'API query language letting clients request exactly the data they need — no over-fetching.',
+    'rest api': 'Architectural style for web services using HTTP methods (GET, POST, PUT, DELETE) for CRUD operations.',
+    'microservices': 'Architecture where apps are built as small, independently deployable services communicating via APIs.',
+    'html': 'HyperText Markup Language — the standard for structuring and giving meaning to web content.',
+    'css': 'Cascading Style Sheets — controls visual presentation, layout, and animations of web pages.',
+    'testing': 'Evaluating software to find defects and verify it meets functional and performance requirements.',
+    'selenium': 'Open-source framework for automating web browser actions — widely used for UI testing.',
+    'power bi': 'Microsoft tool for creating interactive business intelligence reports and dashboards from data.',
+    'photoshop': 'Adobe\'s industry-standard software for image editing, compositing, and graphic design.',
+  };
+
+  const getSkillInfo = (skill) => {
+    const key = skill.toLowerCase().trim();
+    return SKILL_INFO[key] || `${skill} is a professional skill valued across many industries and job roles.`;
+  };
 
   // ==================== RENDER ====================
 
@@ -1291,12 +1375,33 @@ export default function CandidatePortal() {
                 </div>
                 {(profile.skills || []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-4">
-                    {profile.skills.slice(0, 12).map(s => (
-                      <span key={s} className="px-3 py-1 bg-white/20 backdrop-blur rounded-full text-xs font-medium border border-white/20">{s}</span>
+                    {(skillsExpanded ? profile.skills : profile.skills.slice(0, 12)).map(s => (
+                      <button key={s} onClick={() => setSelectedSkill(selectedSkill === s ? null : s)}
+                        className={`px-3 py-1 backdrop-blur rounded-full text-xs font-medium border transition ${
+                          selectedSkill === s
+                            ? 'bg-white text-indigo-700 border-white shadow-lg'
+                            : 'bg-white/20 text-white border-white/20 hover:bg-white/30'
+                        }`}>
+                        {s}
+                      </button>
                     ))}
                     {profile.skills.length > 12 && (
-                      <span className="px-3 py-1 bg-white/10 backdrop-blur rounded-full text-xs text-white/70">+{profile.skills.length - 12} more</span>
+                      <button onClick={() => { setSkillsExpanded(e => !e); setSelectedSkill(null); }}
+                        className="px-3 py-1 bg-indigo-500/30 hover:bg-indigo-500/50 backdrop-blur rounded-full text-xs text-white font-semibold border border-indigo-400/40 transition">
+                        {skillsExpanded ? 'Show less' : `+${profile.skills.length - 12} more`}
+                      </button>
                     )}
+                  </div>
+                )}
+                {/* Skill info tooltip */}
+                {selectedSkill && (
+                  <div className="mt-3 flex items-start gap-2 px-4 py-3 bg-white/15 backdrop-blur rounded-xl border border-white/20 text-sm text-white animate-fade-in">
+                    <svg className="w-4 h-4 mt-0.5 shrink-0 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div className="flex-1">
+                      <span className="font-bold text-white">{selectedSkill}: </span>
+                      <span className="text-white/80">{getSkillInfo(selectedSkill)}</span>
+                    </div>
+                    <button onClick={() => setSelectedSkill(null)} className="text-white/50 hover:text-white ml-2 shrink-0">✕</button>
                   </div>
                 )}
               </div>
