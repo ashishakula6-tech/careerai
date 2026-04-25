@@ -521,11 +521,26 @@ export default function CandidatePortal() {
             {candidateAuth ? (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    if (profile) {
+                  onClick={async () => {
+                    if (!candidateAuth) return;
+                    if (matchedJobs.length > 0) { setView('matches'); return; }
+                    // Re-fetch matches from saved profile
+                    setLoading(true);
+                    try {
+                      const res = await api.get('/portal/candidate/matches', {
+                        params: { email: candidateAuth.email },
+                        headers: { Authorization: undefined },
+                      });
+                      setProfile(res.data.profile);
+                      setMatchedJobs(res.data.matched_jobs || []);
+                      setTotalJobs(res.data.total_jobs || 0);
+                      setTotalMatched(res.data.total_matched || 0);
+                      setEmail(candidateAuth.email);
                       setView('matches');
-                    } else {
+                    } catch {
                       setView('upload');
+                    } finally {
+                      setLoading(false);
                     }
                   }}
                   title="Go to your portal"

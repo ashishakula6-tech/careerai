@@ -127,6 +127,92 @@ def get_candidate_profile(email: str = Query(...), db: Session = Depends(get_db)
     }
 
 
+@router.get("/candidate/matches")
+async def get_candidate_matches(email: str = Query(...), db: Session = Depends(get_db)):
+    """Re-run job matching for an existing candidate profile. Called when candidate clicks their name to go to the portal."""
+    tid = _get_default_tenant(db)
+    candidate = db.query(Candidate).filter(
+        Candidate.email == email, Candidate.tenant_id == tid, Candidate.deleted_at.is_(None)
+    ).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    profile = db.query(CandidateProfile).filter(
+        CandidateProfile.candidate_id == candidate.id,
+        CandidateProfile.is_current == True,
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="No profile found. Please upload your resume first.")
+
+    candidate_skills = profile.skills_list
+    candidate_experience = profile.experience_list
+    candidate_education = profile.education_list
+    location = None
+    for exp in candidate_experience:
+        if isinstance(exp, dict) and exp.get("location"):
+            location = exp["location"]
+            break
+
+    total_active = db.query(Job).filter(Job.tenant_id == tid, Job.status == "active", Job.deleted_at.is_(None)).count()
+
+    from app.agents.matching_agent import MatchingAgent
+    from sqlalchemy import or_, func
+    matcher = MatchingAgent()
+
+    base_query = db.query(Job).filter(Job.tenant_id == tid, Job.status == "active", Job.deleted_at.is_(None))
+    if candidate_skills:
+        skill_filters = [func.lower(Job.skills).like(f"%{s.lower()}%") for s in candidate_skills[:10]]
+        active_jobs = base_query.filter(or_(*skill_filters)).limit(200).all()
+        other_jobs = base_query.filter(~Job.id.in_([j.id for j in active_jobs])).order_by(func.random()).limit(20).all()
+        active_jobs = active_jobs + other_jobs
+    else:
+        active_jobs = base_query.limit(100).all()
+
+    applied_job_ids = {a.job_id for a in db.query(Application).filter(Application.candidate_id == candidate.id).all()}
+
+    candidate_data = {"skills": candidate_skills, "experience": candidate_experience,
+                      "education": candidate_education, "location": location}
+
+    matched_jobs = []
+    for job in active_jobs:
+        job_data = {"skills": job.skills_list, "experience_min": job.experience_min,
+                    "experience_max": job.experience_max, "education": job.education,
+                    "location": job.location, "remote_allowed": job.remote_allowed}
+        result = await matcher.match_candidate_to_job(candidate_data, job_data)
+        matched_jobs.append({
+            "id": job.id, "title": job.title, "description": job.description,
+            "skills": job.skills_list, "experience_min": job.experience_min,
+            "experience_max": job.experience_max, "education": job.education,
+            "location": job.location, "remote_allowed": job.remote_allowed,
+            "work_mode": getattr(job, 'work_mode', 'office') or 'office',
+            "salary_min": job.salary_min, "salary_max": job.salary_max,
+            "published_at": job.published_at.isoformat() if job.published_at else None,
+            "match_score": result["match_score"], "ranking_factors": result["ranking_factors"],
+            "ai_recommendation": result["ai_recommendation"],
+            "already_applied": job.id in applied_job_ids,
+            "matching_skills": sorted(set(s.lower() for s in candidate_skills) & set(s.lower() for s in job.skills_list)),
+            "missing_skills": sorted(set(s.lower() for s in job.skills_list) - set(s.lower() for s in candidate_skills)),
+        })
+
+    matched_jobs.sort(key=lambda j: j["match_score"], reverse=True)
+
+    return {
+        "profile": {
+            "id": candidate.id,
+            "name": f"{candidate.first_name} {candidate.last_name}",
+            "email": candidate.email,
+            "skills": candidate_skills,
+            "experience": candidate_experience,
+            "education": candidate_education,
+            "summary": profile.summary or "",
+        },
+        "matched_jobs": matched_jobs[:50],
+        "total_matched": len(matched_jobs),
+        "total_jobs": total_active,
+        "total_matches": len([j for j in matched_jobs if j["match_score"] >= 0.4]),
+    }
+
+
 @router.get("/jobs")
 def list_public_jobs(
     q: Optional[str] = Query(None, description="Search query - matches title, description, skills, location"),
