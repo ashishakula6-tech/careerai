@@ -113,10 +113,18 @@ export default function CandidatePortal() {
       localStorage.setItem('candidate_auth', JSON.stringify(auth));
       setAuthView(null);
       setAuthForm({ email: '', password: '', first_name: '', last_name: '', phone: '' });
-      // Fetch existing profile so skills are available
+      // If they have an existing profile, go straight to job matches
       try {
         const pr = await api.get('/portal/candidate/me', { params: { email: auth.email }, headers: { Authorization: undefined } });
-        if (pr.data.profile) setProfile(pr.data.profile);
+        if (pr.data.profile) {
+          setProfile(pr.data.profile);
+          // Re-run matching and navigate to matches page
+          const mr = await api.get('/portal/candidate/matches', { params: { email: auth.email }, headers: { Authorization: undefined } });
+          setMatchedJobs(mr.data.matched_jobs || []);
+          setTotalJobs(mr.data.total_jobs || 0);
+          setTotalMatched(mr.data.total_matched || 0);
+          setView('matches');
+        }
       } catch {}
     } catch (err) {
       setAuthError(err.response?.data?.detail || 'Login failed. Please try again.');
