@@ -26,6 +26,7 @@ export default function CandidatePortal() {
   // Recent jobs on landing
   const [recentJobs, setRecentJobs] = useState([]);
   const [recentJobsLoading, setRecentJobsLoading] = useState(true);
+  const [landingSelectedJob, setLandingSelectedJob] = useState(null); // job shown in right panel
 
   // Resume + profile
   const [resume, setResume] = useState(null);
@@ -95,7 +96,7 @@ export default function CandidatePortal() {
     // Load recent jobs — retry up to 3 times because free-tier backend may be waking up
     const fetchRecentJobs = (attempt = 0) => {
       api.get('/portal/jobs', { params: { limit: 8 }, headers: { Authorization: undefined } })
-        .then(res => { setRecentJobs(res.data.jobs || []); setRecentJobsLoading(false); })
+        .then(res => { const jobs = res.data.jobs || []; setRecentJobs(jobs); setLandingSelectedJob(jobs[0] || null); setRecentJobsLoading(false); })
         .catch(() => {
           if (attempt < 3) setTimeout(() => fetchRecentJobs(attempt + 1), 8000);
           else setRecentJobsLoading(false);
@@ -730,119 +731,141 @@ export default function CandidatePortal() {
           </div>
         )}
 
-        {/* Recent Jobs */}
+        {/* Recent Jobs — left list / right detail */}
         <div className="relative z-10 max-w-7xl mx-auto px-6 pb-16">
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-5">
             <h2 className="text-2xl font-black text-white">Recently Added Jobs</h2>
             <button onClick={() => { setLandingQuery(''); setSearchResults(recentJobs); setView('search-results'); }}
               className="text-sm text-white/60 hover:text-white transition flex items-center gap-1">
               View all <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {recentJobsLoading ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="glass rounded-2xl p-5 border border-white/10 animate-pulse">
-                  <div className="h-4 bg-white/10 rounded mb-2 w-3/4" />
-                  <div className="h-3 bg-white/10 rounded mb-4 w-1/2" />
-                  <div className="flex gap-1 mb-3">
-                    <div className="h-5 w-12 bg-white/10 rounded" />
-                    <div className="h-5 w-16 bg-white/10 rounded" />
+
+          {recentJobsLoading ? (
+            <div className="flex gap-4 h-[480px]">
+              <div className="w-80 shrink-0 space-y-3 overflow-hidden">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="glass rounded-xl p-4 border border-white/10 animate-pulse">
+                    <div className="h-4 bg-white/10 rounded mb-2 w-3/4" />
+                    <div className="h-3 bg-white/10 rounded w-1/2" />
                   </div>
-                  <div className="h-7 bg-white/10 rounded mt-3" />
-                </div>
-              ))
-            ) : recentJobs.length === 0 ? (
-              <div className="col-span-4 text-center py-8 text-white/40">
-                <p className="text-sm">Jobs loading… backend is waking up, refresh in a moment.</p>
+                ))}
               </div>
-            ) : recentJobs.slice(0, 8).map(job => (
-                <div key={job.id}
-                  className="glass rounded-2xl p-5 border border-white/10 card-hover cursor-pointer"
-                  onClick={() => { setSelectedJob(job); setJobDetailReturn('landing'); setView('job-detail'); }}>
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <h3 className="text-white font-bold text-sm leading-tight line-clamp-2">{job.title}</h3>
-                    <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
-                      job.work_mode === 'remote' ? 'bg-emerald-500/20 text-emerald-300' :
-                      job.work_mode === 'hybrid' ? 'bg-amber-500/20 text-amber-300' :
-                      'bg-blue-500/20 text-blue-300'}`}>
-                      {job.work_mode || 'Office'}
-                    </span>
+              <div className="flex-1 glass rounded-2xl border border-white/10 animate-pulse" />
+            </div>
+          ) : recentJobs.length === 0 ? (
+            <div className="text-center py-12 text-white/40">
+              <p className="text-sm">Jobs loading… backend is waking up, refresh in a moment.</p>
+            </div>
+          ) : (
+            <div className="flex gap-4 h-[520px]">
+              {/* Left — job list */}
+              <div className="w-80 shrink-0 overflow-y-auto space-y-2 pr-1" style={{ scrollbarWidth: 'thin' }}>
+                {recentJobs.map(job => (
+                  <div key={job.id}
+                    onClick={() => setLandingSelectedJob(job)}
+                    className={`rounded-xl p-4 border cursor-pointer transition ${
+                      landingSelectedJob?.id === job.id
+                        ? 'bg-white/20 border-white/40 shadow-lg'
+                        : 'glass border-white/10 hover:bg-white/10'
+                    }`}>
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <p className="text-white font-semibold text-sm leading-tight line-clamp-2">{job.title}</p>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${
+                        job.work_mode === 'remote' ? 'bg-emerald-500/20 text-emerald-300' :
+                        job.work_mode === 'hybrid' ? 'bg-amber-500/20 text-amber-300' :
+                        'bg-blue-500/20 text-blue-300'}`}>
+                        {job.work_mode || 'Office'}
+                      </span>
+                    </div>
+                    <p className="text-white/50 text-xs flex items-center gap-1">
+                      <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
+                      {job.location}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {(job.skills || []).slice(0, 3).map(s => (
+                        <span key={s} className="text-xs px-1.5 py-0.5 bg-white/10 text-white/60 rounded">{s}</span>
+                      ))}
+                      {(job.skills || []).length > 3 && <span className="text-xs text-white/40">+{job.skills.length - 3} more</span>}
+                    </div>
                   </div>
-                  <p className="text-white/50 text-xs mb-3 flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    {job.location}
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {(job.skills || []).slice(0, 3).map(s => (
-                      <span key={s} className="text-xs px-2 py-0.5 bg-white/10 text-white/60 rounded">{s}</span>
-                    ))}
-                    {(job.skills || []).length > 3 && <span className="text-xs text-white/40">+{job.skills.length - 3}</span>}
-                  </div>
-                  <button onClick={e => { e.stopPropagation(); setSelectedJob(job); setView('upload'); }}
-                    className="mt-3 w-full py-1.5 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white rounded-lg text-xs font-medium transition">
-                    Apply Now
-                  </button>
-                </div>
-              ))}
-          </div>
-        </div>
-
-        {/* How it works */}
-        <div className="relative z-10 max-w-7xl mx-auto px-6 pb-20">
-          <h2 className="text-3xl font-black text-white text-center mb-12">How it works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {[
-              { step: '1', icon: '📄', title: 'Upload Resume', desc: 'Drop your resume and AI reads your skills, experience & education in seconds' },
-              { step: '2', icon: '🎯', title: 'Get Matched', desc: 'AI scores every job worldwide and shows your top matches with % fit' },
-              { step: '3', icon: '🎥', title: 'Video Pitch', desc: 'Record a 30-60 second video telling why you\'re the perfect fit' },
-              { step: '4', icon: '🎙️', title: 'AI Interview', desc: 'Take a voice interview with our AI — pass and a recruiter contacts you' },
-            ].map((item, i) => (
-              <div key={item.step} className="relative glass rounded-2xl p-6 border border-white/10 text-center card-hover animate-slide-up" style={{ animationDelay: `${i * 0.15}s` }}>
-                <div className="text-4xl mb-4">{item.icon}</div>
-                <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-black mx-auto mb-3">
-                  {item.step}
-                </div>
-                <h3 className="text-white font-bold text-lg mb-2">{item.title}</h3>
-                <p className="text-white/60 text-sm leading-relaxed">{item.desc}</p>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Stats bar */}
-        <div className="relative z-10 border-t border-white/10">
-          <div className="max-w-7xl mx-auto px-6 py-12">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-              {[
-                { value: '1200+', label: 'Open Jobs', color: 'from-blue-400 to-indigo-400' },
-                { value: '120+', label: 'Cities Worldwide', color: 'from-purple-400 to-pink-400' },
-                { value: '200+', label: 'Job Categories', color: 'from-emerald-400 to-teal-400' },
-                { value: '24/7', label: 'AI-Powered Matching', color: 'from-amber-400 to-orange-400' },
-              ].map((stat) => (
-                <div key={stat.label}>
-                  <p className={`text-4xl font-black bg-gradient-to-r ${stat.color} bg-clip-text text-transparent`}>{stat.value}</p>
-                  <p className="text-white/60 text-sm mt-1">{stat.label}</p>
+              {/* Right — job detail */}
+              {landingSelectedJob ? (
+                <div className="flex-1 glass rounded-2xl border border-white/20 p-6 overflow-y-auto flex flex-col" style={{ scrollbarWidth: 'thin' }}>
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <h3 className="text-white text-xl font-black">{landingSelectedJob.title}</h3>
+                      <div className="flex items-center gap-3 mt-1.5 text-white/60 text-sm flex-wrap">
+                        <span className="flex items-center gap-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
+                          {landingSelectedJob.location}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                          landingSelectedJob.work_mode === 'remote' ? 'bg-emerald-500/20 text-emerald-300' :
+                          landingSelectedJob.work_mode === 'hybrid' ? 'bg-amber-500/20 text-amber-300' :
+                          'bg-blue-500/20 text-blue-300'}`}>
+                          {landingSelectedJob.work_mode || 'Office'}
+                        </span>
+                        {landingSelectedJob.experience_min != null && (
+                          <span>{landingSelectedJob.experience_min}–{landingSelectedJob.experience_max || '10+'}yr exp</span>
+                        )}
+                        {landingSelectedJob.salary_min && (
+                          <span className="text-emerald-400 font-medium">
+                            ${(landingSelectedJob.salary_min/1000).toFixed(0)}K–${(landingSelectedJob.salary_max/1000).toFixed(0)}K
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button onClick={() => { setSelectedJob(landingSelectedJob); setView('upload'); }}
+                      className="shrink-0 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-bold text-sm hover:scale-105 transition-all shadow-lg">
+                      Apply Now
+                    </button>
+                  </div>
+
+                  {/* Required Skills */}
+                  {(landingSelectedJob.skills || []).length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">Required Skills</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(landingSelectedJob.skills || []).map(s => {
+                          const has = profile?.skills?.some(ps => ps.toLowerCase() === s.toLowerCase());
+                          return (
+                            <span key={s} className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                              profile ? (has ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-red-500/10 text-red-300 border-red-500/20')
+                                      : 'bg-white/10 text-white/70 border-white/10'}`}>
+                              {profile ? (has ? '✓ ' : '✗ ') : ''}{s}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {profile && <p className="text-white/30 text-xs mt-1">Green = you have it · Red = you need it</p>}
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  <div className="flex-1">
+                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">About the Role</p>
+                    <p className="text-white/70 text-sm leading-relaxed">{landingSelectedJob.description}</p>
+                  </div>
+
+                  {/* Education */}
+                  {landingSelectedJob.education && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      <span className="text-white/40 text-xs">Education required: </span>
+                      <span className="text-white/70 text-xs font-medium">{landingSelectedJob.education}</span>
+                    </div>
+                  )}
                 </div>
-              ))}
+              ) : (
+                <div className="flex-1 glass rounded-2xl border border-white/10 flex items-center justify-center">
+                  <p className="text-white/30 text-sm">Select a job to see details</p>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
-
-        {/* Bottom CTA */}
-        <div className="relative z-10 max-w-7xl mx-auto px-6 pb-20">
-          <div className="relative overflow-hidden rounded-3xl">
-            <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600" />
-            <div className="absolute inset-0 bg-dots opacity-10" />
-            <div className="relative p-12 text-center">
-              <h2 className="text-4xl font-black text-white mb-4">Ready to find your dream job?</h2>
-              <p className="text-white/80 text-lg mb-8 max-w-lg mx-auto">It takes less than 60 seconds. Upload your resume and let AI do the heavy lifting.</p>
-              <button onClick={() => setView('upload')}
-                className="px-10 py-4 bg-white text-indigo-700 rounded-2xl font-bold text-lg shadow-2xl hover:shadow-white/20 hover:scale-105 transition-all">
-                Get Started — It's Free
-              </button>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -879,11 +902,13 @@ export default function CandidatePortal() {
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Email *</label>
                     <input type="email" required value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})}
+                      placeholder="you@example.com"
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Password *</label>
                     <input type="password" required value={authForm.password} onChange={e => setAuthForm({...authForm, password: e.target.value})}
+                      placeholder="Enter your password"
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
                   </div>
                   <button type="submit" disabled={authLoading}
@@ -900,6 +925,7 @@ export default function CandidatePortal() {
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-1">First Name *</label>
                       <input type="text" required value={authForm.first_name} onChange={e => setAuthForm({...authForm, first_name: e.target.value})}
+                        placeholder="e.g. Sarah"
                         className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
                     </div>
                     <div>
@@ -911,6 +937,7 @@ export default function CandidatePortal() {
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Email *</label>
                     <input type="email" required value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})}
+                      placeholder="you@example.com"
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
                   </div>
                   <div>
@@ -953,7 +980,7 @@ export default function CandidatePortal() {
               <div className="flex-1 relative">
                 <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input type="text" value={landingQuery} onChange={e => setLandingQuery(e.target.value)}
-                  placeholder="Search jobs…"
+                  placeholder="Search by job title, company, skill, or location…"
                   className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white" />
               </div>
               <button type="submit" className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition">Search</button>
@@ -1496,7 +1523,7 @@ export default function CandidatePortal() {
                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
                 <input type="text" value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
-                  placeholder="Search by title, skill, or keyword..."
+                  placeholder="Filter by job title, required skill, or keyword…"
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-gray-50 text-sm" />
               </div>
 
@@ -2201,7 +2228,7 @@ export default function CandidatePortal() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold mb-4">My Applications</h2>
               <div className="flex gap-2 mb-6">
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Your email"
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter your registered email address"
                   className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   onKeyDown={e => e.key === 'Enter' && checkStatus()} />
                 <button onClick={checkStatus} disabled={loading} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
@@ -2396,7 +2423,7 @@ export default function CandidatePortal() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold mb-4">My Data & Privacy</h2>
               <div className="mb-6">
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Your email"
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Enter your registered email address"
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
               </div>
               <div className="space-y-3">
