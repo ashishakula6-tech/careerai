@@ -142,6 +142,52 @@ def get_candidate_profile(email: str = Query(...), db: Session = Depends(get_db)
     }
 
 
+@router.put("/candidate/profile")
+def update_candidate_profile(
+    email: str = Query(...),
+    data: dict = None,
+    db: Session = Depends(get_db),
+):
+    """Save candidate's manually edited profile (skills, experience, education, etc.)."""
+    from fastapi import Body
+    tid = _get_default_tenant(db)
+    candidate = db.query(Candidate).filter(
+        Candidate.email == email, Candidate.tenant_id == tid, Candidate.deleted_at.is_(None)
+    ).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    profile = db.query(CandidateProfile).filter(
+        CandidateProfile.candidate_id == candidate.id,
+        CandidateProfile.is_current == True,
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="No profile found")
+
+    if "skills" in data:
+        profile.skills = json.dumps(data["skills"])
+    if "experience" in data:
+        profile.experience = json.dumps(data["experience"])
+    if "education" in data:
+        profile.education = json.dumps(data["education"])
+    if "summary" in data:
+        profile.summary = data["summary"]
+
+    # Update enriched metadata
+    try:
+        meta = json.loads(candidate.metadata_json or "{}")
+    except Exception:
+        meta = {}
+
+    for field in ["projects", "certifications", "awards", "publications", "languages", "additional_work", "interests"]:
+        if field in data:
+            meta[field] = data[field]
+
+    candidate.metadata_json = json.dumps(meta)
+    db.commit()
+    return {"message": "Profile updated successfully"}
+
+
 @router.get("/candidate/matches")
 async def get_candidate_matches(email: str = Query(...), db: Session = Depends(get_db)):
     """Re-run job matching for an existing candidate profile. Called when candidate clicks their name to go to the portal."""

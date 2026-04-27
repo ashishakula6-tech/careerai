@@ -68,7 +68,13 @@ export default function CandidatePortal() {
 
   // Skills panel
   const [skillsExpanded, setSkillsExpanded] = useState(false);
-  const [selectedSkill, setSelectedSkill] = useState(null); // skill name whose info tooltip is shown
+  const [selectedSkill, setSelectedSkill] = useState(null);
+
+  // Profile editor
+  const [editedProfile, setEditedProfile] = useState(null); // working copy while editing
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaveMsg, setProfileSaveMsg] = useState('');
+  const [addInputs, setAddInputs] = useState({}); // { sectionKey: inputValue }
 
   // ==================== SESSION RESTORE + RECENT JOBS ====================
   useEffect(() => {
@@ -1033,6 +1039,12 @@ export default function CandidatePortal() {
                 <span className="text-gray-700 text-sm font-medium">{profile.name}</span>
               </div>
             )}
+            {profile && (
+              <button onClick={() => { setEditedProfile(JSON.parse(JSON.stringify(profile))); setAddInputs({}); setProfileSaveMsg(''); setView('profile'); }}
+                className="px-3 py-1.5 text-sm text-indigo-600 hover:text-white hover:bg-indigo-600 font-semibold rounded-lg border border-indigo-200 hover:border-indigo-600 transition">
+                My Profile
+              </button>
+            )}
             <button onClick={() => { setView('inbox'); loadInbox(); }} className="px-3 py-1.5 text-sm text-gray-600 hover:text-blue-600 font-medium rounded-lg hover:bg-white/50 transition relative">
               Inbox
               {inboxEmails.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-xs flex items-center justify-center">{inboxEmails.length}</span>}
@@ -1659,6 +1671,300 @@ export default function CandidatePortal() {
             )}
           </div>
         )}
+
+        {/* ===== MY PROFILE (view + edit) ===== */}
+        {view === 'profile' && editedProfile && (() => {
+          const ep = editedProfile;
+          const jobSkills = (selectedJob?.skills || []).map(s => s.toLowerCase());
+          const mySkills  = (ep.skills || []).map(s => s.toLowerCase());
+          const missingForJob = jobSkills.filter(s => !mySkills.includes(s));
+
+          const removeItem = (section, idx) =>
+            setEditedProfile(p => ({ ...p, [section]: p[section].filter((_, i) => i !== idx) }));
+
+          const removeSkill = (skill) =>
+            setEditedProfile(p => ({ ...p, skills: p.skills.filter(s => s !== skill) }));
+
+          const addItem = (section, blank) =>
+            setEditedProfile(p => ({ ...p, [section]: [...(p[section] || []), blank] }));
+
+          const addSkillFromInput = () => {
+            const v = (addInputs.skills || '').trim();
+            if (!v || ep.skills.includes(v)) return;
+            setEditedProfile(p => ({ ...p, skills: [...p.skills, v] }));
+            setAddInputs(i => ({ ...i, skills: '' }));
+          };
+
+          const saveProfile = async () => {
+            setProfileSaving(true); setProfileSaveMsg('');
+            try {
+              await api.put('/portal/candidate/profile', ep, {
+                params: { email: candidateAuth?.email || profile.email },
+                headers: { Authorization: undefined },
+              });
+              setProfile({ ...profile, ...ep });
+              setProfileSaveMsg('✓ Profile saved successfully');
+            } catch { setProfileSaveMsg('Save failed. Please try again.'); }
+            finally { setProfileSaving(false); }
+          };
+
+          const SectionHeader = ({ title, icon, onAdd }) => (
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">{icon} {title}</h3>
+              {onAdd && (
+                <button onClick={onAdd} className="flex items-center gap-1 px-3 py-1 text-xs font-semibold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition">
+                  <span className="text-base leading-none">+</span> Add
+                </button>
+              )}
+            </div>
+          );
+
+          const Tag = ({ label, color = 'gray', onRemove }) => (
+            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium border ${
+              color === 'green' ? 'bg-green-50 text-green-700 border-green-200' :
+              color === 'red'   ? 'bg-red-50 text-red-500 border-red-200' :
+              color === 'blue'  ? 'bg-blue-50 text-blue-700 border-blue-200' :
+              'bg-gray-100 text-gray-700 border-gray-200'}`}>
+              {label}
+              {onRemove && <button onClick={onRemove} className="ml-1 hover:text-red-500 font-bold text-xs">✕</button>}
+            </span>
+          );
+
+          return (
+            <div className="max-w-3xl mx-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <button onClick={() => setView(matchedJobs.length > 0 ? 'matches' : 'landing')}
+                    className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1 mb-1">
+                    ← Back
+                  </button>
+                  <h2 className="text-2xl font-black text-gray-900">My Profile</h2>
+                  <p className="text-gray-500 text-sm mt-0.5">Extracted from your resume · Edit anything that needs correcting</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {profileSaveMsg && <span className={`text-sm font-medium ${profileSaveMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{profileSaveMsg}</span>}
+                  <button onClick={saveProfile} disabled={profileSaving}
+                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-sm hover:opacity-90 disabled:opacity-60 transition shadow-lg">
+                    {profileSaving ? 'Saving…' : 'Save Profile'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Job skill gap banner */}
+              {selectedJob && missingForJob.length > 0 && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <p className="text-sm font-semibold text-amber-800 mb-2">
+                    Skills missing for <span className="text-amber-900">{selectedJob.title}</span> — add them to improve your match:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {missingForJob.map(s => (
+                      <button key={s} onClick={() => { setEditedProfile(p => ({ ...p, skills: [...p.skills, s] })); }}
+                        className="px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-full text-sm font-medium border border-amber-300 transition">
+                        + {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-6">
+                {/* Summary */}
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                  <SectionHeader title="Summary" icon="📝" />
+                  <textarea value={ep.summary || ''} rows={3}
+                    onChange={e => setEditedProfile(p => ({ ...p, summary: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none" />
+                </div>
+
+                {/* Skills */}
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                  <SectionHeader title={`Skills (${ep.skills?.length || 0})`} icon="⚡" />
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {(ep.skills || []).map(s => (
+                      <Tag key={s} label={s}
+                        color={jobSkills.length > 0 ? (jobSkills.includes(s.toLowerCase()) ? 'green' : 'gray') : 'blue'}
+                        onRemove={() => removeSkill(s)} />
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <input value={addInputs.skills || ''} onChange={e => setAddInputs(i => ({ ...i, skills: e.target.value }))}
+                      onKeyDown={e => e.key === 'Enter' && addSkillFromInput()}
+                      placeholder="Type a skill and press Enter or +"
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                    <button onClick={addSkillFromInput} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition">+</button>
+                  </div>
+                  {jobSkills.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      <span className="inline-block w-3 h-3 rounded-full bg-green-200 mr-1" />Green = matches {selectedJob.title} · Gray = not required
+                    </p>
+                  )}
+                </div>
+
+                {/* Experience */}
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                  <SectionHeader title="Experience" icon="💼"
+                    onAdd={() => addItem('experience', { company: '', role: '', years: '', description: '' })} />
+                  <div className="space-y-3">
+                    {(ep.experience || []).length === 0 && <p className="text-sm text-gray-400 italic">No experience added yet.</p>}
+                    {(ep.experience || []).map((exp, i) => (
+                      <div key={i} className="p-4 bg-gray-50 rounded-xl border border-gray-200 relative">
+                        <button onClick={() => removeItem('experience', i)}
+                          className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition text-sm font-bold">✕</button>
+                        <div className="grid grid-cols-2 gap-2 pr-8">
+                          <input value={exp.company || ''} onChange={e => { const u=[...ep.experience]; u[i]={...u[i],company:e.target.value}; setEditedProfile(p=>({...p,experience:u})); }}
+                            placeholder="Company" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={exp.role || ''} onChange={e => { const u=[...ep.experience]; u[i]={...u[i],role:e.target.value}; setEditedProfile(p=>({...p,experience:u})); }}
+                            placeholder="Role / Title" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={exp.years || ''} onChange={e => { const u=[...ep.experience]; u[i]={...u[i],years:e.target.value}; setEditedProfile(p=>({...p,experience:u})); }}
+                            placeholder="Years (e.g. 2.5)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={exp.description || ''} onChange={e => { const u=[...ep.experience]; u[i]={...u[i],description:e.target.value}; setEditedProfile(p=>({...p,experience:u})); }}
+                            placeholder="Brief description" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Education */}
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                  <SectionHeader title="Education" icon="🎓"
+                    onAdd={() => addItem('education', { degree: '', field: '', university: '', year: '' })} />
+                  <div className="space-y-3">
+                    {(ep.education || []).length === 0 && <p className="text-sm text-gray-400 italic">No education added yet.</p>}
+                    {(ep.education || []).map((edu, i) => (
+                      <div key={i} className="p-4 bg-gray-50 rounded-xl border border-gray-200 relative">
+                        <button onClick={() => removeItem('education', i)}
+                          className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition text-sm font-bold">✕</button>
+                        <div className="grid grid-cols-2 gap-2 pr-8">
+                          <input value={edu.degree || ''} onChange={e => { const u=[...ep.education]; u[i]={...u[i],degree:e.target.value}; setEditedProfile(p=>({...p,education:u})); }}
+                            placeholder="Degree (e.g. Bachelor's)" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={edu.field || ''} onChange={e => { const u=[...ep.education]; u[i]={...u[i],field:e.target.value}; setEditedProfile(p=>({...p,education:u})); }}
+                            placeholder="Field of study" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={edu.university || ''} onChange={e => { const u=[...ep.education]; u[i]={...u[i],university:e.target.value}; setEditedProfile(p=>({...p,education:u})); }}
+                            placeholder="University / Institution" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={edu.year || ''} onChange={e => { const u=[...ep.education]; u[i]={...u[i],year:e.target.value}; setEditedProfile(p=>({...p,education:u})); }}
+                            placeholder="Graduation year" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Projects */}
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                  <SectionHeader title="Projects" icon="🚀"
+                    onAdd={() => addItem('projects', { name: '', description: '', technologies: [], role: '', outcome: '' })} />
+                  <div className="space-y-3">
+                    {(ep.projects || []).length === 0 && <p className="text-sm text-gray-400 italic">No projects extracted. Add them manually.</p>}
+                    {(ep.projects || []).map((proj, i) => (
+                      <div key={i} className="p-4 bg-gray-50 rounded-xl border border-gray-200 relative">
+                        <button onClick={() => removeItem('projects', i)}
+                          className="absolute top-3 right-3 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition text-sm font-bold">✕</button>
+                        <div className="space-y-2 pr-8">
+                          <input value={proj.name || ''} onChange={e => { const u=[...ep.projects]; u[i]={...u[i],name:e.target.value}; setEditedProfile(p=>({...p,projects:u})); }}
+                            placeholder="Project name" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent font-semibold" />
+                          <textarea value={proj.description || ''} rows={2} onChange={e => { const u=[...ep.projects]; u[i]={...u[i],description:e.target.value}; setEditedProfile(p=>({...p,projects:u})); }}
+                            placeholder="Description" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent resize-none" />
+                          <input value={(proj.technologies||[]).join(', ')} onChange={e => { const u=[...ep.projects]; u[i]={...u[i],technologies:e.target.value.split(',').map(s=>s.trim()).filter(Boolean)}; setEditedProfile(p=>({...p,projects:u})); }}
+                            placeholder="Technologies (comma-separated)" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Certifications */}
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                  <SectionHeader title="Certifications" icon="🏅"
+                    onAdd={() => addItem('certifications', { title: '', issuer: '', date: '', description: '' })} />
+                  <div className="space-y-2">
+                    {(ep.certifications || []).length === 0 && <p className="text-sm text-gray-400 italic">No certifications found. Add them manually.</p>}
+                    {(ep.certifications || []).map((cert, i) => (
+                      <div key={i} className="flex items-center gap-2 p-3 bg-blue-50 rounded-xl border border-blue-100 relative">
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                          <input value={cert.title || ''} onChange={e => { const u=[...ep.certifications]; u[i]={...u[i],title:e.target.value}; setEditedProfile(p=>({...p,certifications:u})); }}
+                            placeholder="Certificate title" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={cert.issuer || ''} onChange={e => { const u=[...ep.certifications]; u[i]={...u[i],issuer:e.target.value}; setEditedProfile(p=>({...p,certifications:u})); }}
+                            placeholder="Issued by" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                        </div>
+                        <button onClick={() => removeItem('certifications', i)}
+                          className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition text-sm font-bold shrink-0">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Awards */}
+                <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                  <SectionHeader title="Awards & Achievements" icon="🏆"
+                    onAdd={() => addItem('awards', { title: '', issuer: '', date: '', description: '' })} />
+                  <div className="space-y-2">
+                    {(ep.awards || []).length === 0 && <p className="text-sm text-gray-400 italic">No awards extracted. Add them if you have any.</p>}
+                    {(ep.awards || []).map((award, i) => (
+                      <div key={i} className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                          <input value={award.title || ''} onChange={e => { const u=[...ep.awards]; u[i]={...u[i],title:e.target.value}; setEditedProfile(p=>({...p,awards:u})); }}
+                            placeholder="Award title" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={award.issuer || ''} onChange={e => { const u=[...ep.awards]; u[i]={...u[i],issuer:e.target.value}; setEditedProfile(p=>({...p,awards:u})); }}
+                            placeholder="Awarded by" className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                        </div>
+                        <button onClick={() => removeItem('awards', i)}
+                          className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition text-sm font-bold shrink-0">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Languages & Interests */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                    <SectionHeader title="Languages" icon="🌐"
+                      onAdd={() => addItem('languages', { language: '', proficiency: '' })} />
+                    <div className="space-y-2">
+                      {(ep.languages || []).length === 0 && <p className="text-sm text-gray-400 italic">None added.</p>}
+                      {(ep.languages || []).map((lang, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input value={lang.language || ''} onChange={e => { const u=[...ep.languages]; u[i]={...u[i],language:e.target.value}; setEditedProfile(p=>({...p,languages:u})); }}
+                            placeholder="Language" className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <input value={lang.proficiency || ''} onChange={e => { const u=[...ep.languages]; u[i]={...u[i],proficiency:e.target.value}; setEditedProfile(p=>({...p,languages:u})); }}
+                            placeholder="Level" className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                          <button onClick={() => removeItem('languages', i)}
+                            className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-red-500 rounded-full text-sm font-bold">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                    <SectionHeader title="Interests" icon="✨" />
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {(ep.interests || []).map((interest, i) => (
+                        <Tag key={i} label={interest} onRemove={() => removeItem('interests', i)} />
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <input value={addInputs.interests || ''} onChange={e => setAddInputs(inp => ({ ...inp, interests: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter' && addInputs.interests?.trim()) { addItem('interests', addInputs.interests.trim()); setAddInputs(i=>({...i,interests:''})); } }}
+                        placeholder="Add interest + Enter"
+                        className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom save */}
+              <div className="mt-8 flex items-center justify-between py-4 border-t border-gray-100">
+                {profileSaveMsg && <span className={`text-sm font-medium ${profileSaveMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>{profileSaveMsg}</span>}
+                <div className="ml-auto">
+                  <button onClick={saveProfile} disabled={profileSaving}
+                    className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:opacity-90 disabled:opacity-60 transition shadow-lg">
+                    {profileSaving ? 'Saving…' : 'Save Profile'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ===== JOB DETAIL ===== */}
         {view === 'job-detail' && selectedJob && (
