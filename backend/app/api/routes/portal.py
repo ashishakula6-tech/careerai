@@ -54,7 +54,9 @@ def candidate_register(
                       "name": f"{existing.first_name} {existing.last_name}"}
         return {"access_token": create_access_token(token_data), "token_type": "bearer",
                 "candidate": {"id": existing.id, "email": existing.email,
-                              "name": f"{existing.first_name} {existing.last_name}"}}
+                              "name": f"{existing.first_name} {existing.last_name}",
+                              "first_name": existing.first_name, "last_name": existing.last_name,
+                              "phone": existing.phone or ""}}
 
     candidate = Candidate(
         tenant_id=tid, email=email, first_name=first_name, last_name=last_name,
@@ -70,7 +72,8 @@ def candidate_register(
     token_data = {"sub": candidate.id, "email": email, "role": "candidate",
                   "name": f"{first_name} {last_name}"}
     return {"access_token": create_access_token(token_data), "token_type": "bearer",
-            "candidate": {"id": candidate.id, "email": email, "name": f"{first_name} {last_name}"}}
+            "candidate": {"id": candidate.id, "email": email, "name": f"{first_name} {last_name}",
+                          "first_name": first_name, "last_name": last_name, "phone": phone}}
 
 
 @router.post("/candidate/login")
@@ -93,7 +96,9 @@ def candidate_login(email: str, password: str, db: Session = Depends(get_db)):
                   "name": f"{candidate.first_name} {candidate.last_name}"}
     return {"access_token": create_access_token(token_data), "token_type": "bearer",
             "candidate": {"id": candidate.id, "email": email,
-                          "name": f"{candidate.first_name} {candidate.last_name}"}}
+                          "name": f"{candidate.first_name} {candidate.last_name}",
+                          "first_name": candidate.first_name, "last_name": candidate.last_name,
+                          "phone": candidate.phone or ""}}
 
 
 @router.get("/candidate/me")

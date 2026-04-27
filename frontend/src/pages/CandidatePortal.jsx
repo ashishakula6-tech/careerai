@@ -86,9 +86,25 @@ export default function CandidatePortal() {
         const parsed = JSON.parse(stored);
         setCandidateAuth(parsed);
         setEmail(parsed.email || '');
+        // Pre-fill upload form with known account details so they don't re-enter them
+        const nameParts = (parsed.name || '').split(' ');
+        setForm(f => ({
+          ...f,
+          first_name: parsed.first_name || nameParts[0] || '',
+          last_name: parsed.last_name || nameParts.slice(1).join(' ') || '',
+          phone: parsed.phone || '',
+        }));
         // Silently fetch their saved profile so skills show immediately
         api.get('/portal/candidate/me', { params: { email: parsed.email }, headers: { Authorization: undefined } })
-          .then(res => { if (res.data.profile) setProfile(res.data.profile); })
+          .then(res => {
+            if (res.data.profile) {
+              setProfile(res.data.profile);
+              // Fill phone from profile if not already in auth
+              if (res.data.profile.phone && !parsed.phone) {
+                setForm(f => ({ ...f, phone: res.data.profile.phone }));
+              }
+            }
+          })
           .catch(() => {});
       }
     } catch {}
@@ -118,6 +134,14 @@ export default function CandidatePortal() {
       setCandidateAuth(auth);
       setEmail(auth.email);
       localStorage.setItem('candidate_auth', JSON.stringify(auth));
+      // Pre-fill upload form so returning candidate doesn't retype their details
+      const lnParts = (auth.name || '').split(' ');
+      setForm(f => ({
+        ...f,
+        first_name: auth.first_name || lnParts[0] || '',
+        last_name: auth.last_name || lnParts.slice(1).join(' ') || '',
+        phone: auth.phone || '',
+      }));
       setAuthView(null);
       setAuthForm({ email: '', password: '', first_name: '', last_name: '', phone: '' });
       // If they have an existing profile, go straight to job matches
@@ -125,6 +149,7 @@ export default function CandidatePortal() {
         const pr = await api.get('/portal/candidate/me', { params: { email: auth.email }, headers: { Authorization: undefined } });
         if (pr.data.profile) {
           setProfile(pr.data.profile);
+          if (pr.data.profile.phone && !auth.phone) setForm(f => ({ ...f, phone: pr.data.profile.phone }));
           // Re-run matching and navigate to matches page
           const mr = await api.get('/portal/candidate/matches', { params: { email: auth.email }, headers: { Authorization: undefined } });
           setMatchedJobs(mr.data.matched_jobs || []);
@@ -156,6 +181,13 @@ export default function CandidatePortal() {
       setCandidateAuth(auth);
       setEmail(auth.email);
       localStorage.setItem('candidate_auth', JSON.stringify(auth));
+      // Pre-fill upload form with newly registered details
+      setForm(f => ({
+        ...f,
+        first_name: auth.first_name || authForm.first_name,
+        last_name: auth.last_name || authForm.last_name,
+        phone: auth.phone || authForm.phone,
+      }));
       setAuthView(null);
       setAuthForm({ email: '', password: '', first_name: '', last_name: '', phone: '' });
       // Fetch existing profile if they had one
@@ -1155,45 +1187,77 @@ export default function CandidatePortal() {
             )}
 
             <form onSubmit={handleUpload} className="glass-card rounded-3xl p-8 space-y-5 shadow-2xl">
-              {candidateAuth && (
-                <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
-                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                  Signed in as <strong>{candidateAuth.name}</strong> — no password needed
+              {candidateAuth ? (
+                /* Signed-in banner — shows pre-filled account info, no re-entry needed */
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 text-sm text-emerald-700 font-semibold">
+                    <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    Signed in — your details are pre-filled below
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="bg-white/70 rounded-xl px-3 py-2.5 border border-emerald-100">
+                      <p className="text-xs text-gray-400 mb-0.5">First Name</p>
+                      <p className="font-semibold text-gray-800">{form.first_name || '—'}</p>
+                    </div>
+                    <div className="bg-white/70 rounded-xl px-3 py-2.5 border border-emerald-100">
+                      <p className="text-xs text-gray-400 mb-0.5">Last Name</p>
+                      <p className="font-semibold text-gray-800">{form.last_name || '—'}</p>
+                    </div>
+                    <div className="bg-white/70 rounded-xl px-3 py-2.5 border border-emerald-100">
+                      <p className="text-xs text-gray-400 mb-0.5">Email</p>
+                      <p className="font-semibold text-gray-800 truncate">{email}</p>
+                    </div>
+                    <div className="bg-white/70 rounded-xl px-3 py-2.5 border border-emerald-100">
+                      <p className="text-xs text-gray-400 mb-0.5">Phone</p>
+                      {form.phone ? (
+                        <p className="font-semibold text-gray-800">{form.phone}</p>
+                      ) : (
+                        <input type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                          placeholder="+1 234 567 8900" required
+                          className="w-full font-semibold text-gray-800 bg-transparent outline-none placeholder-gray-300 text-sm" />
+                      )}
+                    </div>
+                  </div>
+                  {!form.phone && (
+                    <p className="text-xs text-amber-600">Please add your phone number above to continue.</p>
+                  )}
                 </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">First Name *</label>
-                  <input type="text" value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} required
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Last Name *</label>
-                  <input type="text" value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} required
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Email *</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Phone *</label>
-                <input type="tel" required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
-                  placeholder="+1 234 567 8900"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
-              </div>
-              {!candidateAuth && (
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  {candidateAuth ? 'Account Password' : 'Set Password *'}
-                  <span className="text-gray-400 font-normal ml-1 text-xs">— to save your profile & sign in later</span>
-                </label>
-                <input type="password" required minLength={6} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-                  placeholder="Min 6 characters"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
-              </div>
+              ) : (
+                /* Not signed in — show full form */
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">First Name *</label>
+                      <input type="text" value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} required
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Last Name *</label>
+                      <input type="text" value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} required
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Email *</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Phone *</label>
+                    <input type="tel" required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                      placeholder="+1 234 567 8900"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Set Password *
+                      <span className="text-gray-400 font-normal ml-1 text-xs">— to save your profile & sign in later</span>
+                    </label>
+                    <input type="password" required minLength={6} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                      placeholder="Min 6 characters"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 transition" />
+                  </div>
+                </>
               )}
               {/* Toggle: Resume or Manual */}
               <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
