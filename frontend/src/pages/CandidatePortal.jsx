@@ -1147,8 +1147,30 @@ export default function CandidatePortal() {
         {/* ===== STEP 1: UPLOAD RESUME ===== */}
         {view === 'upload' && (
           <div className="max-w-2xl mx-auto animate-fade-in">
+
+            {/* Tab bar — only for signed-in candidates with an existing profile */}
+            {candidateAuth && profile && (
+              <div className="flex gap-2 p-1 bg-white/80 backdrop-blur rounded-2xl border border-gray-200 shadow-sm mb-8 mt-4">
+                <button
+                  type="button"
+                  className="flex-1 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow transition"
+                >
+                  <svg className="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                  Update Resume
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditedProfile(JSON.parse(JSON.stringify(profile))); setView('profile'); }}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-100 transition"
+                >
+                  <svg className="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  My Profile
+                </button>
+              </div>
+            )}
+
             {/* Hero */}
-            <div className="text-center mb-10 mt-6">
+            <div className="text-center mb-10 mt-2">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-white/80 backdrop-blur rounded-full border border-indigo-200 mb-4">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1837,6 +1859,25 @@ export default function CandidatePortal() {
 
           return (
             <div className="max-w-3xl mx-auto">
+              {/* Tab bar */}
+              <div className="flex gap-2 p-1 bg-white/80 backdrop-blur rounded-2xl border border-gray-200 shadow-sm mb-6 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setView('upload')}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-100 transition"
+                >
+                  <svg className="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                  Update Resume
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 py-3 rounded-xl text-sm font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow transition"
+                >
+                  <svg className="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  My Profile
+                </button>
+              </div>
+
               {/* Header */}
               <div className="flex items-center justify-between mb-6">
                 <div>
