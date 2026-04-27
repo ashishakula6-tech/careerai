@@ -2,9 +2,9 @@
 Unified LLM Client — routes every AI call to the best available model.
 
 Priority:
-  1. Anthropic Claude Opus 4.7  (primary — highest quality)
-  2. Anthropic Claude Sonnet 4.6 (fast tier — high-volume tasks)
-  3. OpenAI GPT-4o               (fallback — if Anthropic unavailable)
+  1. DeepSeek  deepseek-reasoner / deepseek-chat  (first priority when DEEPSEEK_API_KEY set)
+  2. Anthropic Claude Opus 4.7 / Sonnet 4.6       (when ANTHROPIC_API_KEY set)
+  3. OpenAI GPT-4o                                  (fallback)
 
 Usage:
     from app.services.llm_client import call_llm, LLMTier
@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class LLMTier(str, Enum):
-    PRIMARY = "primary"   # Claude Opus 4.7  — resume parsing, matching, evaluation
-    FAST    = "fast"      # Claude Sonnet 4.6 — candidate search, quick screening
+    PRIMARY = "primary"   # deepseek-reasoner / Claude Opus 4.7  — resume parsing, evaluation
+    FAST    = "fast"      # deepseek-chat / Claude Sonnet 4.6    — search, quick tasks
 
 
 async def call_llm(
@@ -48,15 +48,23 @@ async def call_llm(
     if json_mode:
         system = system.rstrip() + "\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanation, no extra text."
 
-    # ── Try Anthropic first ────────────────────────────────────────────────
+    # ── 1. DeepSeek (highest priority when key is set) ────────────────────
+    if settings.DEEPSEEK_API_KEY:
+        model = settings.LLM_DEEPSEEK_PRIMARY if tier == LLMTier.PRIMARY else settings.LLM_DEEPSEEK_FAST
+        try:
+            return await _call_deepseek(system, user, model, max_tokens, temperature, json_mode)
+        except Exception as exc:
+            logger.warning("DeepSeek %s failed (%s), trying Anthropic", model, exc)
+
+    # ── 2. Anthropic Claude ───────────────────────────────────────────────
     if settings.ANTHROPIC_API_KEY:
         model = settings.LLM_PRIMARY if tier == LLMTier.PRIMARY else settings.LLM_FAST
         try:
             return await _call_anthropic(system, user, model, max_tokens, temperature, json_mode)
         except Exception as exc:
-            logger.warning("Anthropic %s failed (%s), falling back to OpenAI", model, exc)
+            logger.warning("Anthropic %s failed (%s), trying OpenAI", model, exc)
 
-    # ── Fallback: OpenAI GPT-4o ───────────────────────────────────────────
+    # ── 3. OpenAI GPT-4o (last resort) ───────────────────────────────────
     if settings.OPENAI_API_KEY:
         try:
             return await _call_openai(system, user, settings.LLM_FALLBACK, max_tokens, temperature, json_mode)
@@ -64,7 +72,46 @@ async def call_llm(
             logger.error("OpenAI fallback also failed: %s", exc)
             raise
 
-    raise RuntimeError("No LLM API key configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in environment.")
+    raise RuntimeError("No LLM API key configured. Set DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY.")
+
+
+# ---------------------------------------------------------------------------
+# DeepSeek backend  (OpenAI-compatible API)
+# ---------------------------------------------------------------------------
+
+async def _call_deepseek(
+    system: str, user: str, model: str,
+    max_tokens: int, temperature: float, json_mode: bool,
+) -> str:
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(
+        api_key=settings.DEEPSEEK_API_KEY,
+        base_url="https://api.deepseek.com",
+    )
+
+    kwargs: dict = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+        "max_tokens": max_tokens,
+    }
+
+    # deepseek-reasoner (R1) does not support temperature or json response_format
+    if model != "deepseek-reasoner":
+        kwargs["temperature"] = temperature
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+
+    resp = await client.chat.completions.create(**kwargs)
+    text = resp.choices[0].message.content.strip()
+
+    if json_mode:
+        text = _extract_json(text)
+
+    return text
 
 
 # ---------------------------------------------------------------------------
