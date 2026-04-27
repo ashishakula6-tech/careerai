@@ -824,72 +824,158 @@ export default function CandidatePortal() {
                 ))}
               </div>
 
-              {/* Right — job detail */}
+              {/* Right — job detail (scrollable, 5+ sections) */}
               {landingSelectedJob ? (
-                <div className="flex-1 glass rounded-2xl border border-white/20 p-6 overflow-y-auto flex flex-col" style={{ scrollbarWidth: 'thin' }}>
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                      <h3 className="text-white text-xl font-black">{landingSelectedJob.title}</h3>
-                      <div className="flex items-center gap-3 mt-1.5 text-white/60 text-sm flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
-                          {landingSelectedJob.location}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                          landingSelectedJob.work_mode === 'remote' ? 'bg-emerald-500/20 text-emerald-300' :
-                          landingSelectedJob.work_mode === 'hybrid' ? 'bg-amber-500/20 text-amber-300' :
-                          'bg-blue-500/20 text-blue-300'}`}>
-                          {landingSelectedJob.work_mode || 'Office'}
-                        </span>
-                        {landingSelectedJob.experience_min != null && (
-                          <span>{landingSelectedJob.experience_min}–{landingSelectedJob.experience_max || '10+'}yr exp</span>
-                        )}
-                        {landingSelectedJob.salary_min && (
-                          <span className="text-emerald-400 font-medium">
-                            ${(landingSelectedJob.salary_min/1000).toFixed(0)}K–${(landingSelectedJob.salary_max/1000).toFixed(0)}K
+                <div className="flex-1 glass rounded-2xl border border-white/20 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+                  {/* ── Section 1: Header ── */}
+                  <div className="p-6 border-b border-white/10">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-white text-2xl font-black leading-tight">{landingSelectedJob.title}</h3>
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <span className="flex items-center gap-1 text-white/60 text-sm">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /></svg>
+                            {landingSelectedJob.location}
                           </span>
-                        )}
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            landingSelectedJob.work_mode === 'remote' ? 'bg-emerald-500/20 text-emerald-300' :
+                            landingSelectedJob.work_mode === 'hybrid' ? 'bg-amber-500/20 text-amber-300' :
+                            'bg-blue-500/20 text-blue-300'}`}>
+                            {landingSelectedJob.work_mode || 'Office'}
+                          </span>
+                        </div>
                       </div>
+                      <button onClick={() => { setSelectedJob(landingSelectedJob); setView('upload'); }}
+                        className="shrink-0 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-bold text-sm hover:scale-105 transition-all shadow-lg">
+                        Apply Now
+                      </button>
                     </div>
-                    <button onClick={() => { setSelectedJob(landingSelectedJob); setView('upload'); }}
-                      className="shrink-0 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-bold text-sm hover:scale-105 transition-all shadow-lg">
-                      Apply Now
-                    </button>
                   </div>
 
-                  {/* Required Skills */}
+                  {/* ── Section 2: Quick Stats ── */}
+                  <div className="px-6 py-4 border-b border-white/10 grid grid-cols-3 gap-4">
+                    {landingSelectedJob.salary_min ? (
+                      <div>
+                        <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Salary</p>
+                        <p className="text-emerald-400 font-bold text-base">
+                          ${(landingSelectedJob.salary_min/1000).toFixed(0)}K–${(landingSelectedJob.salary_max/1000).toFixed(0)}K
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Salary</p>
+                        <p className="text-white/50 text-sm">Competitive</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Experience</p>
+                      <p className="text-white/80 font-semibold text-sm">
+                        {landingSelectedJob.experience_min != null
+                          ? `${landingSelectedJob.experience_min}–${landingSelectedJob.experience_max || '10+'} years`
+                          : 'Any level'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs uppercase tracking-wider mb-1">Education</p>
+                      <p className="text-white/80 font-semibold text-sm">{landingSelectedJob.education || 'Any'}</p>
+                    </div>
+                  </div>
+
+                  {/* ── Section 3: Required Skills ── */}
                   {(landingSelectedJob.skills || []).length > 0 && (
-                    <div className="mb-4">
-                      <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">Required Skills</p>
+                    <div className="px-6 py-5 border-b border-white/10">
+                      <p className="text-white/50 text-xs font-bold uppercase tracking-wider mb-3">Required Skills</p>
                       <div className="flex flex-wrap gap-2">
                         {(landingSelectedJob.skills || []).map(s => {
                           const has = profile?.skills?.some(ps => ps.toLowerCase() === s.toLowerCase());
                           return (
-                            <span key={s} className={`px-3 py-1 rounded-full text-xs font-medium border ${
-                              profile ? (has ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-red-500/10 text-red-300 border-red-500/20')
+                            <span key={s} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                              profile ? (has ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-rose-500/10 text-rose-300 border-rose-500/20')
                                       : 'bg-white/10 text-white/70 border-white/10'}`}>
                               {profile ? (has ? '✓ ' : '✗ ') : ''}{s}
                             </span>
                           );
                         })}
                       </div>
-                      {profile && <p className="text-white/30 text-xs mt-1">Green = you have it · Red = you need it</p>}
+                      {profile && (
+                        <p className="text-white/30 text-xs mt-2">
+                          ✓ You already have · ✗ You'll need to learn
+                        </p>
+                      )}
                     </div>
                   )}
 
-                  {/* Description */}
-                  <div className="flex-1">
-                    <p className="text-white/50 text-xs font-semibold uppercase tracking-wider mb-2">About the Role</p>
-                    <p className="text-white/70 text-sm leading-relaxed">{landingSelectedJob.description}</p>
+                  {/* ── Section 4: About the Role ── */}
+                  <div className="px-6 py-5 border-b border-white/10">
+                    <p className="text-white/50 text-xs font-bold uppercase tracking-wider mb-3">About the Role</p>
+                    <p className="text-white/75 text-sm leading-7 whitespace-pre-line">{landingSelectedJob.description}</p>
                   </div>
 
-                  {/* Education */}
-                  {landingSelectedJob.education && (
-                    <div className="mt-4 pt-4 border-t border-white/10">
-                      <span className="text-white/40 text-xs">Education required: </span>
-                      <span className="text-white/70 text-xs font-medium">{landingSelectedJob.education}</span>
+                  {/* ── Section 5: What We're Looking For ── */}
+                  <div className="px-6 py-5 border-b border-white/10">
+                    <p className="text-white/50 text-xs font-bold uppercase tracking-wider mb-3">What We're Looking For</p>
+                    <ul className="space-y-2 text-sm text-white/70">
+                      {landingSelectedJob.experience_min != null && (
+                        <li className="flex items-start gap-2">
+                          <span className="mt-0.5 text-indigo-400">▸</span>
+                          {landingSelectedJob.experience_min}–{landingSelectedJob.experience_max || '10+'} years of professional experience
+                        </li>
+                      )}
+                      {landingSelectedJob.education && (
+                        <li className="flex items-start gap-2">
+                          <span className="mt-0.5 text-indigo-400">▸</span>
+                          {landingSelectedJob.education} degree or equivalent practical experience
+                        </li>
+                      )}
+                      {(landingSelectedJob.skills || []).slice(0, 5).map(s => (
+                        <li key={s} className="flex items-start gap-2">
+                          <span className="mt-0.5 text-indigo-400">▸</span>
+                          Strong knowledge of {s}
+                        </li>
+                      ))}
+                      <li className="flex items-start gap-2">
+                        <span className="mt-0.5 text-indigo-400">▸</span>
+                        Excellent communication and teamwork skills
+                      </li>
+                    </ul>
+                  </div>
+
+                  {/* ── Section 6: Work & Benefits ── */}
+                  <div className="px-6 py-5 border-b border-white/10">
+                    <p className="text-white/50 text-xs font-bold uppercase tracking-wider mb-3">Work & Benefits</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { icon: '🏢', label: 'Work Mode', val: (landingSelectedJob.work_mode || 'office').charAt(0).toUpperCase() + (landingSelectedJob.work_mode || 'office').slice(1) },
+                        { icon: '📍', label: 'Location', val: landingSelectedJob.location },
+                        { icon: '💰', label: 'Compensation', val: landingSelectedJob.salary_min ? `$${(landingSelectedJob.salary_min/1000).toFixed(0)}K–$${(landingSelectedJob.salary_max/1000).toFixed(0)}K/yr` : 'Competitive' },
+                        { icon: '🎓', label: 'Education', val: landingSelectedJob.education || 'Any level' },
+                      ].map(({ icon, label, val }) => (
+                        <div key={label} className="flex items-start gap-2 bg-white/5 rounded-xl p-3">
+                          <span className="text-base leading-none mt-0.5">{icon}</span>
+                          <div>
+                            <p className="text-white/40 text-xs">{label}</p>
+                            <p className="text-white/80 text-sm font-medium">{val}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  )}
+                  </div>
+
+                  {/* ── Section 7: Apply CTA ── */}
+                  <div className="px-6 py-5">
+                    <p className="text-white/50 text-xs font-bold uppercase tracking-wider mb-3">Ready to Apply?</p>
+                    <p className="text-white/60 text-sm mb-4">Upload your resume and let our AI match your profile to this role in seconds.</p>
+                    <button onClick={() => { setSelectedJob(landingSelectedJob); setView('upload'); }}
+                      className="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-all shadow-lg">
+                      Apply for {landingSelectedJob.title} →
+                    </button>
+                    {landingSelectedJob.published_at && (
+                      <p className="text-white/25 text-xs text-center mt-3">
+                        Posted {new Date(landingSelectedJob.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {landingSelectedJob.expires_at ? ` · Closes ${new Date(landingSelectedJob.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+                      </p>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="flex-1 glass rounded-2xl border border-white/10 flex items-center justify-center">
