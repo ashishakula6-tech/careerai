@@ -747,9 +747,15 @@ export default function CandidatePortal() {
                     <p className="text-white/50 text-xs">Your saved profile</p>
                   </div>
                 </div>
-                <button onClick={() => setView('upload')} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl border border-white/20 transition">
-                  Update Resume
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setEditedProfile(JSON.parse(JSON.stringify(profile))); setView('profile'); }}
+                    className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl border border-white/20 transition">
+                    My Profile
+                  </button>
+                  <button onClick={() => setView('upload')} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl border border-white/20 transition">
+                    Update Resume
+                  </button>
+                </div>
               </div>
               <p className="text-white/60 text-xs mb-3">Your skills ({profile.skills.length})</p>
               <div className="flex flex-wrap gap-2">
@@ -1148,8 +1154,8 @@ export default function CandidatePortal() {
         {view === 'upload' && (
           <div className="max-w-2xl mx-auto animate-fade-in">
 
-            {/* Tab bar — only for signed-in candidates with an existing profile */}
-            {candidateAuth && profile && (
+            {/* Tab bar — shown for any signed-in candidate */}
+            {candidateAuth && (
               <div className="flex gap-2 p-1 bg-white/80 backdrop-blur rounded-2xl border border-gray-200 shadow-sm mb-8 mt-4">
                 <button
                   type="button"
@@ -1160,7 +1166,10 @@ export default function CandidatePortal() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setEditedProfile(JSON.parse(JSON.stringify(profile))); setView('profile'); }}
+                  onClick={() => {
+                    if (profile) { setEditedProfile(JSON.parse(JSON.stringify(profile))); setView('profile'); }
+                    else setMessage('Upload your resume first to create a profile.');
+                  }}
                   className="flex-1 py-3 rounded-xl text-sm font-bold text-gray-600 hover:bg-gray-100 transition"
                 >
                   <svg className="w-4 h-4 inline mr-1.5 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
