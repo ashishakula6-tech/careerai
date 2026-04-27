@@ -1549,9 +1549,16 @@ export default function CandidatePortal() {
                       </div>
                     </div>
                   </div>
-                  <button onClick={() => setView('upload')} className="glass px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/20 transition">
-                    Update Resume
-                  </button>
+                  <div className="flex flex-col gap-2 items-end">
+                    <button onClick={() => { setEditedProfile(JSON.parse(JSON.stringify(profile))); setView('profile'); }}
+                      className="glass px-4 py-2 rounded-xl text-sm font-bold bg-white/20 hover:bg-white/30 text-white transition w-full text-center">
+                      My Profile
+                    </button>
+                    <button onClick={() => setView('upload')}
+                      className="glass px-4 py-2 rounded-xl text-sm font-medium hover:bg-white/20 transition w-full text-center">
+                      Update Resume
+                    </button>
+                  </div>
                 </div>
                 {(profile.skills || []).length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-4">
