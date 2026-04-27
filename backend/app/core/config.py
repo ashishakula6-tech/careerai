@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     LLM_FAST: str = "claude-sonnet-4-6"           # high-volume / latency-sensitive
     LLM_FALLBACK: str = "gpt-4o"                   # OpenAI fallback if Anthropic down
     # DeepSeek models (used when DEEPSEEK_API_KEY is set — first priority)
-    LLM_DEEPSEEK_PRIMARY: str = "deepseek-reasoner"  # DeepSeek-R1 — best reasoning
-    LLM_DEEPSEEK_FAST: str = "deepseek-chat"          # DeepSeek-V3 — fast, cost-efficient
+    LLM_DEEPSEEK_PRIMARY: str = "deepseek-chat"  # DeepSeek-V3 — reliable, fast, low cost
+    LLM_DEEPSEEK_FAST: str = "deepseek-chat"     # DeepSeek-V3 — same model for all tiers
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = "us-east-1"
 

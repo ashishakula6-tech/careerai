@@ -97,13 +97,10 @@ async def _call_deepseek(
             {"role": "user",   "content": user},
         ],
         "max_tokens": max_tokens,
+        "temperature": temperature,
     }
-
-    # deepseek-reasoner (R1) does not support temperature or json response_format
-    if model != "deepseek-reasoner":
-        kwargs["temperature"] = temperature
-        if json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
 
     resp = await client.chat.completions.create(**kwargs)
     text = resp.choices[0].message.content.strip()

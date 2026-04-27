@@ -566,15 +566,32 @@ async def upload_resume_and_match(
     if not tid:
         raise HTTPException(status_code=500, detail="No tenant configured")
 
-    content = await resume.read()
+    try:
+        content = await resume.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {e}")
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty. Please upload a valid resume.")
 
     # Extract text from ANY file format (PDF, DOCX, images, RTF, etc.)
-    from app.services.file_extractor import extract_text
-    text = extract_text(content, filename=resume.filename or "", content_type=resume.content_type or "")
+    try:
+        from app.services.file_extractor import extract_text
+        text = extract_text(content, filename=resume.filename or "", content_type=resume.content_type or "")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not extract text from file: {e}")
+
+    if not text or len(text.strip()) < 20:
+        raise HTTPException(status_code=400, detail="Could not read text from your resume. Please try a PDF or DOCX file.")
 
     # Parse resume
-    from app.agents.resume_parser import ResumeParserAgent
-    parsed = await ResumeParserAgent().parse_resume(text)
+    try:
+        from app.agents.resume_parser import ResumeParserAgent
+        parsed = await ResumeParserAgent().parse_resume(text)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("Resume parsing failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Resume parsing error: {str(e)}")
 
     candidate_skills = parsed.get("skills", [])
     candidate_experience = parsed.get("experience", [])
