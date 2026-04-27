@@ -64,7 +64,7 @@ class CandidateSearchAgent:
 
     async def parse_query(self, query: str) -> dict:
         """Parse a natural language query into structured search filters."""
-        if settings.OPENAI_API_KEY:
+        if settings.DEEPSEEK_API_KEY or settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY:
             try:
                 return await self._parse_with_llm(query)
             except Exception:

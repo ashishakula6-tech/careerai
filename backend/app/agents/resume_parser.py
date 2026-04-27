@@ -115,7 +115,7 @@ class ResumeParserAgent:
         raw_parsed: Optional[dict] = None
         method = "rule_based"
 
-        if settings.OPENAI_API_KEY:
+        if settings.DEEPSEEK_API_KEY or settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY:
             try:
                 raw_parsed = await self._extract_with_llm(working_text)
                 if raw_parsed:

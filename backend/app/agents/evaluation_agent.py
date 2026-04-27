@@ -54,7 +54,7 @@ class EvaluationAgent:
 
         Returns structured evaluation with scores, strengths, and recommendation.
         """
-        if settings.OPENAI_API_KEY:
+        if settings.DEEPSEEK_API_KEY or settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY:
             try:
                 return await self._evaluate_with_llm(notes, job_requirements)
             except Exception:

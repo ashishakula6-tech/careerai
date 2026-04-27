@@ -550,9 +550,9 @@ async def manual_profile_and_match(
 @router.post("/upload-resume")
 async def upload_resume_and_match(
     email: str = Form(...),
-    first_name: str = Form(...),
-    last_name: str = Form(...),
-    phone: str = Form(...),
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    phone: str = Form(""),
     consent_job_application: bool = Form(True),
     resume: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -587,11 +587,21 @@ async def upload_resume_and_match(
 
     if not candidate:
         candidate = Candidate(
-            tenant_id=tid, email=email, first_name=first_name, last_name=last_name,
+            tenant_id=tid, email=email,
+            first_name=first_name or "Candidate",
+            last_name=last_name or "",
             phone_hash=hashlib.sha256(phone.encode()).hexdigest() if phone else None,
             consent_given=consent_job_application, source="portal",
         )
         db.add(candidate)
+    else:
+        # Update name/phone only if provided and not already set
+        if first_name and not candidate.first_name:
+            candidate.first_name = first_name
+        if last_name and not candidate.last_name:
+            candidate.last_name = last_name
+        if phone and not candidate.phone:
+            candidate.phone = phone
         db.flush()
         db.add(Consent(
             candidate_id=candidate.id, tenant_id=tid, purpose="job_application",

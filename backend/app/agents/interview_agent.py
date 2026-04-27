@@ -116,7 +116,7 @@ class AIInterviewAgent:
         This ensures different candidates get different questions.
         """
 
-        if settings.OPENAI_API_KEY:
+        if settings.DEEPSEEK_API_KEY or settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY:
             try:
                 return await self._generate_with_llm(job_skills, job_title, job_description)
             except Exception:
@@ -206,7 +206,7 @@ Mix: 2-3 technical, 1 problem-solving, 1 behavioral. Make every question specifi
     async def evaluate_answers(self, questions_and_answers: List[dict], job_title: str, job_skills: List[str]) -> dict:
         """Evaluate all candidate answers and produce a score."""
 
-        if settings.OPENAI_API_KEY:
+        if settings.DEEPSEEK_API_KEY or settings.ANTHROPIC_API_KEY or settings.OPENAI_API_KEY:
             try:
                 return await self._evaluate_with_llm(questions_and_answers, job_title, job_skills)
             except Exception:

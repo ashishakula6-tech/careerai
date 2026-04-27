@@ -298,11 +298,12 @@ export default function CandidatePortal() {
     setLoading(true); setMessage('');
     try {
       await registerOrLogin();
+      const nameParts = (candidateAuth?.name || '').split(' ');
       const fd = new FormData();
       fd.append('email', email);
-      fd.append('first_name', form.first_name);
-      fd.append('last_name', form.last_name);
-      fd.append('phone', form.phone);
+      fd.append('first_name', form.first_name || candidateAuth?.first_name || nameParts[0] || '');
+      fd.append('last_name', form.last_name || candidateAuth?.last_name || nameParts.slice(1).join(' ') || '');
+      fd.append('phone', form.phone || candidateAuth?.phone || '');
       fd.append('consent_job_application', 'true');
       fd.append('resume', resume);
       const res = await api.post('/portal/upload-resume', fd, {
